@@ -1,40 +1,128 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { quoteFreight, normalizeCep } from '@/lib/freight'
+import { normalizeCep } from '@/lib/freight'
 import { formatCurrency } from '@/lib/currency'
+import { ShippingQuoteValidationError, useShippingQuote } from '@/features/shipping/hooks'
 import type { FreightQuote } from '@/lib/freight'
+import type { ShippingOption, ShippingQuoteResult } from '@/features/shipping/types'
 
 interface FreightEstimatorProps {
   subtotalCents: number
+  /** Product page calls pass the current product to use the shared backend quote flow. */
+  productId?: string
+  quantity?: number
+  items?: Array<{ productId: string; quantity: number }>
   /** Called with the resolved quote so parent can include it in totals. */
   onQuote?: (quote: FreightQuote | null) => void
 }
 
-export function FreightEstimator({ subtotalCents, onQuote }: FreightEstimatorProps) {
+function getQuoteForOption(result: ShippingQuoteResult, option: ShippingOption): FreightQuote {
+  return {
+    amountCents: result.freeShippingApplied ? 0 : option.priceCents,
+    estimatedDays: `${option.estimatedDays} dias úteis`,
+    label: result.freeShippingApplied ? 'Frete grátis' : option.carrierName,
+  }
+}
+
+function sortOptions(options: ShippingOption[]): ShippingOption[] {
+  return [...options].sort((a, b) => {
+    if (a.priceCents === b.priceCents) return a.estimatedDays - b.estimatedDays
+    return a.priceCents - b.priceCents
+  })
+}
+
+export function FreightEstimator({ subtotalCents, productId, quantity = 1, items, onQuote }: FreightEstimatorProps) {
   const [cep, setCep] = useState('')
   const [cepError, setCepError] = useState<string | null>(null)
   const [quote, setQuote] = useState<FreightQuote | null>(null)
+  const [shippingOptions, setShippingOptions] = useState<ShippingOption[]>([])
+  const [selectedCode, setSelectedCode] = useState<string | null>(null)
+  const shippingQuote = useShippingQuote()
+
+  useEffect(() => {
+    if (shippingOptions.length === 0) {
+      setSelectedCode(null)
+      return
+    }
+
+    if (!selectedCode || !shippingOptions.some((option) => option.serviceCode === selectedCode)) {
+      const nextOption = sortOptions(shippingOptions)[0]
+      setSelectedCode(nextOption.serviceCode)
+      setQuote(getQuoteForOption({
+        options: shippingOptions,
+        freeShippingApplied: shippingOptions.some((option) => option.priceCents === 0),
+        subtotalCents,
+      }, nextOption))
+      onQuote?.(getQuoteForOption({
+        options: shippingOptions,
+        freeShippingApplied: shippingOptions.some((option) => option.priceCents === 0),
+        subtotalCents,
+      }, nextOption))
+    }
+  }, [shippingOptions, selectedCode, subtotalCents, onQuote])
 
   function handleCepChange(e: React.ChangeEvent<HTMLInputElement>) {
     const raw = e.target.value
-    // Allow only digits and hyphen, max 9 chars (00000-000)
     const filtered = raw.replace(/[^\d-]/g, '').slice(0, 9)
     setCep(filtered)
     setCepError(null)
   }
 
+  function finishWithError(message: string) {
+    setCepError(message)
+    setShippingOptions([])
+    setSelectedCode(null)
+    setQuote(null)
+    onQuote?.(null)
+    toast.error(message)
+  }
+
   function handleEstimate() {
-    const result = quoteFreight({ cep, subtotalCents })
-    if (!result.ok) {
-      setCepError(result.error.message)
-      setQuote(null)
-      onQuote?.(null)
-      toast.error(result.error.message)
+    const normalizedCep = normalizeCep(cep)
+
+    if (!/^\d{8}$/.test(normalizedCep)) {
+      finishWithError('CEP inválido. Informe um CEP com 8 dígitos.')
       return
     }
-    setCepError(null)
-    setQuote(result.quote)
-    onQuote?.(result.quote)
+
+    const requestItems = productId
+      ? [{ productId, quantity }]
+      : (items ?? []).map(({ productId, quantity }) => ({ productId, quantity }))
+
+    if (requestItems.length === 0) {
+      finishWithError('Adicione ao menos um produto para calcular o frete.')
+      return
+    }
+
+    shippingQuote.mutate(
+      {
+        destinationZip: normalizedCep,
+        items: requestItems,
+      },
+      {
+        onSuccess: (result) => {
+          if (!result.options || result.options.length === 0) {
+            finishWithError('Não foi possível calcular o frete para este CEP. Tente novamente.')
+            return
+          }
+
+          const orderedOptions = sortOptions(result.options)
+          setShippingOptions(orderedOptions)
+          const nextOption = orderedOptions[0]
+          setSelectedCode(nextOption.serviceCode)
+          const nextQuote = getQuoteForOption(result, nextOption)
+          setQuote(nextQuote)
+          onQuote?.(nextQuote)
+          setCepError(null)
+        },
+        onError: (error) => {
+          const message = error instanceof ShippingQuoteValidationError
+            ? error.message
+            : 'Não foi possível calcular o frete neste momento. Tente novamente.'
+          finishWithError(message)
+        },
+      },
+    )
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -42,9 +130,11 @@ export function FreightEstimator({ subtotalCents, onQuote }: FreightEstimatorPro
   }
 
   const normalizedCep = normalizeCep(cep)
-  const displayCep = normalizedCep.length === 8
-    ? `${normalizedCep.slice(0, 5)}-${normalizedCep.slice(5)}`
-    : cep
+  const displayCep = normalizedCep.length === 8 ? `${normalizedCep.slice(0, 5)}-${normalizedCep.slice(5)}` : cep
+  const selectedOption = useMemo(
+    () => shippingOptions.find((option) => option.serviceCode === selectedCode) ?? null,
+    [shippingOptions, selectedCode],
+  )
 
   return (
     <div className="flex flex-col gap-3">
@@ -73,11 +163,58 @@ export function FreightEstimator({ subtotalCents, onQuote }: FreightEstimatorPro
         <button
           type="button"
           onClick={handleEstimate}
-          className="rounded-[var(--radius)] bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover transition-colors"
+          disabled={shippingQuote.isPending}
+          className="rounded-[var(--radius)] bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary-hover transition-colors disabled:cursor-not-allowed disabled:opacity-70"
         >
-          Calcular
+          {shippingQuote.isPending ? 'Calculando...' : 'Calcular'}
         </button>
       </div>
+
+      {shippingOptions.length > 0 && (
+        <div className="rounded-[var(--radius)] border border-border bg-surface-elevated p-3 text-sm">
+          <p className="mb-2 text-xs text-text-secondary uppercase tracking-wide">Opções de entrega</p>
+          <div className="flex flex-col gap-2">
+            {shippingOptions.map((option) => {
+              const optionQuote = getQuoteForOption({
+                options: shippingOptions,
+                freeShippingApplied: shippingOptions.some((current) => current.priceCents === 0),
+                subtotalCents,
+              }, option)
+              const isSelected = selectedOption?.serviceCode === option.serviceCode
+
+              return (
+                <label
+                  key={option.serviceCode}
+                  className={`flex cursor-pointer items-center justify-between gap-3 rounded-[var(--radius)] border px-3 py-2 ${
+                    isSelected ? 'border-primary bg-primary/5' : 'border-border bg-surface'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="radio"
+                      name="shipping-option"
+                      checked={isSelected}
+                      onChange={() => {
+                        setSelectedCode(option.serviceCode)
+                        setQuote(optionQuote)
+                        onQuote?.(optionQuote)
+                      }}
+                      className="accent-primary"
+                    />
+                    <div>
+                      <div className="font-medium text-text-primary">{option.carrierName}</div>
+                      <div className="text-xs text-text-secondary">Entrega em {option.estimatedDays} dias</div>
+                    </div>
+                  </div>
+                  <span className="font-semibold text-text-primary">
+                    {optionQuote.amountCents === 0 ? 'Grátis' : formatCurrency(optionQuote.amountCents)}
+                  </span>
+                </label>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       {quote && (
         <div

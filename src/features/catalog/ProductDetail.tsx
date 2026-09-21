@@ -243,7 +243,11 @@ export function ProductDetail({ product }: ProductDetailProps) {
         </button>
 
         {/* Freight estimator */}
-        <FreightEstimator subtotalCents={selectedVariant.priceCents * quantity} />
+        <FreightEstimator
+          subtotalCents={selectedVariant.priceCents * quantity}
+          productId={product.id}
+          quantity={quantity}
+        />
       </div>
     </div>
   )

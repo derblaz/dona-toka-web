@@ -1,10 +1,10 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { useCartStore } from '@/features/cart/hooks'
 import * as cartStore from '@/features/cart/store'
 import { formatCurrency } from '@/lib/currency'
-import { quoteFreight, normalizeCep } from '@/lib/freight'
+import { normalizeCep } from '@/lib/freight'
 import { confirmCheckout } from '@/features/checkout/service'
 import {
   customerSchema,
@@ -12,6 +12,8 @@ import {
   notesSchema,
   paymentSchema,
 } from '@/features/checkout/schemas'
+import { ShippingQuoteValidationError, useShippingQuote } from '@/features/shipping/hooks'
+import type { ShippingOption, ShippingQuoteResult } from '@/features/shipping/types'
 import type { FreightQuote } from '@/lib/freight'
 import type { CustomerInput, AddressInput, CardPaymentInput } from '@/features/checkout/schemas'
 
@@ -70,20 +72,73 @@ function CheckoutPage() {
     cvv: '',
   })
   const [freightQuote, setFreightQuote] = useState<FreightQuote | null>(null)
+  const [shippingOptions, setShippingOptions] = useState<ShippingOption[]>([])
+  const [selectedShippingCode, setSelectedShippingCode] = useState<string | null>(null)
   const [errors, setErrors] = useState<FieldErrors>({})
   const [submitting, setSubmitting] = useState(false)
+  const shippingQuote = useShippingQuote()
 
   const totalCents = subtotalCents + (freightQuote?.amountCents ?? 0)
 
-  function handleFreightQuote() {
-    const result = quoteFreight({ cep: address.cep, subtotalCents })
-    if (result.ok) {
-      setFreightQuote(result.quote)
-      setErrors((e) => ({ ...e, freight: undefined }))
-    } else {
-      setFreightQuote(null)
-      setErrors((e) => ({ ...e, freight: result.error.message }))
+  function mapShippingQuoteToOption(result: ShippingQuoteResult, option: ShippingOption): FreightQuote {
+    return {
+      amountCents: result.freeShippingApplied ? 0 : option.priceCents,
+      estimatedDays: `${option.estimatedDays} dias úteis`,
+      label: result.freeShippingApplied ? 'Frete grátis' : option.carrierName,
     }
+  }
+
+  function sortShippingOptions(options: ShippingOption[]): ShippingOption[] {
+    return [...options].sort((a, b) => {
+      if (a.priceCents === b.priceCents) return a.estimatedDays - b.estimatedDays
+      return a.priceCents - b.priceCents
+    })
+  }
+
+  function handleFreightQuote() {
+    const normalizedCep = normalizeCep(address.cep)
+    if (!/^\d{8}$/.test(normalizedCep)) {
+      setFreightQuote(null)
+      setShippingOptions([])
+      setSelectedShippingCode(null)
+      setErrors((e) => ({ ...e, freight: 'CEP inválido. Informe um CEP com 8 dígitos.' }))
+      return
+    }
+
+    shippingQuote.mutate(
+      {
+        destinationZip: normalizedCep,
+        items: items.map(({ productId, quantity }) => ({ productId, quantity })),
+      },
+      {
+        onSuccess: (result) => {
+          if (!result.options || result.options.length === 0) {
+            setFreightQuote(null)
+            setShippingOptions([])
+            setSelectedShippingCode(null)
+            setErrors((e) => ({ ...e, freight: 'Não foi possível calcular o frete para este CEP. Tente novamente.' }))
+            return
+          }
+
+          const orderedOptions = sortShippingOptions(result.options)
+          setShippingOptions(orderedOptions)
+          const cheapest = orderedOptions[0]
+          setSelectedShippingCode(cheapest.serviceCode)
+          const nextQuote = mapShippingQuoteToOption(result, cheapest)
+          setFreightQuote(nextQuote)
+          setErrors((e) => ({ ...e, freight: undefined }))
+        },
+        onError: (error) => {
+          const message = error instanceof ShippingQuoteValidationError
+            ? error.message
+            : 'Não foi possível calcular o frete neste momento. Tente novamente.'
+          setFreightQuote(null)
+          setShippingOptions([])
+          setSelectedShippingCode(null)
+          setErrors((e) => ({ ...e, freight: message }))
+        },
+      },
+    )
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -252,6 +307,48 @@ function CheckoutPage() {
                     {errors.freight}
                   </p>
                 )}
+                {shippingOptions.length > 0 && (
+                  <div className="flex flex-col gap-2">
+                    {shippingOptions.map((option) => {
+                      const optionQuote = mapShippingQuoteToOption(
+                        { options: shippingOptions, freeShippingApplied: shippingOptions.some((current) => current.priceCents === 0), subtotalCents },
+                        option,
+                      )
+                      const isSelected = option.serviceCode === selectedShippingCode
+
+                      return (
+                        <label
+                          key={option.serviceCode}
+                          className={`flex cursor-pointer items-center justify-between gap-3 rounded-[var(--radius)] border px-3 py-2 ${
+                            isSelected ? 'border-primary bg-primary/5' : 'border-border bg-surface'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3">
+                            <input
+                              type="radio"
+                              name="checkout-shipping-option"
+                              checked={isSelected}
+                              onChange={() => {
+                                setSelectedShippingCode(option.serviceCode)
+                                setFreightQuote(optionQuote)
+                                setErrors((e) => ({ ...e, freight: undefined }))
+                              }}
+                              className="accent-primary"
+                            />
+                            <div>
+                              <div className="font-medium text-text-primary">{option.carrierName}</div>
+                              <div className="text-xs text-text-secondary">{option.estimatedDays} dias úteis</div>
+                            </div>
+                          </div>
+                          <span className="font-semibold text-text-primary">
+                            {optionQuote.amountCents === 0 ? 'Grátis' : formatCurrency(optionQuote.amountCents)}
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                )}
+
                 {freightQuote && (
                   <p className="text-sm text-success font-medium">
                     {freightQuote.label} — {freightQuote.estimatedDays}
@@ -476,6 +573,16 @@ function CheckoutPage() {
                       : formatCurrency(freightQuote.amountCents)}
                 </span>
               </div>
+              {shippingOptions.length > 0 && (
+                <div className="rounded-[var(--radius)] border border-border bg-surface-elevated p-3 text-sm">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-text-secondary">Entrega selecionada</span>
+                    <span className="font-medium text-text-primary">
+                      {shippingOptions.find((option) => option.serviceCode === selectedShippingCode)?.carrierName ?? 'Opcional'}
+                    </span>
+                  </div>
+                </div>
+              )}
               <hr className="border-border" />
               <div className="flex justify-between font-semibold">
                 <span>Total estimado</span>

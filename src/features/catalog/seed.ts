@@ -7,7 +7,7 @@ import type { Product } from './models'
  */
 export const CATALOG_SEED: Product[] = [
   {
-    id: 'toca-cirurgica',
+    id: '00000000-0000-0000-0000-000000000001',
     slug: 'toca-cirurgica',
     name: 'Touca Cirúrgica',
     category: 'toca-cirurgica',

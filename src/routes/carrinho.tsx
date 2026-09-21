@@ -132,7 +132,11 @@ function CartPage() {
               </span>
               <span className="font-medium text-text-primary">{formatCurrency(subtotalCents)}</span>
             </div>
-            <FreightEstimator subtotalCents={subtotalCents} onQuote={setFreightQuote} />
+            <FreightEstimator
+              subtotalCents={subtotalCents}
+              items={items.map(({ productId, quantity }) => ({ productId, quantity }))}
+              onQuote={setFreightQuote}
+            />
             <div className="flex justify-between text-sm">
               <span className="text-text-secondary">Frete (estimativa)</span>
               <span className="font-medium text-text-primary">
