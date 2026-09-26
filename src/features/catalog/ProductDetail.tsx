@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 import { formatCurrency, formatInstallments } from '@/lib/currency'
 import { validateQuantity, MIN_QUANTITY, MAX_QUANTITY } from './validation'
 import { ADD_TO_CART_EVENT } from './models'
-import type { Product, ProductVariant, CartItemSnapshot } from './models'
+import type { Product, CartItemSnapshot } from './models'
 import { FreightEstimator } from '@/components/FreightEstimator'
 
 interface ProductDetailProps {
@@ -14,14 +15,37 @@ interface ProductDetailProps {
 const INSTALLMENTS = 3
 
 export function ProductDetail({ product }: ProductDetailProps) {
-  const [selectedVariant, setSelectedVariant] = useState<ProductVariant>(product.variants[0])
+  const galleryImages = useMemo(() => {
+    const uniqueImages = [product.mainImageUrl, ...product.galleryImageUrls].filter((url) => typeof url === 'string' && url.trim().length > 0)
+    return Array.from(new Set(uniqueImages.map((url) => url.trim())))
+  }, [product])
+
   const [quantity, setQuantity] = useState(1)
-  const [imageRole, setImageRole] = useState<'layout' | 'real-product'>('real-product')
+  const [selectedImage, setSelectedImage] = useState(galleryImages[0] ?? '')
   const [quantityError, setQuantityError] = useState<string | null>(null)
 
-  const layoutImage = selectedVariant.images.find((i) => i.role === 'layout')
-  const realImage = selectedVariant.images.find((i) => i.role === 'real-product')
-  const activeImage = imageRole === 'layout' ? layoutImage : realImage
+  useEffect(() => {
+    setSelectedImage(galleryImages[0] ?? '')
+  }, [galleryImages])
+
+  const activeImage = selectedImage || product.mainImageUrl || galleryImages[0] || ''
+
+  if (!product.active) {
+    return (
+      <main className="mx-auto max-w-3xl px-6 py-20 text-center">
+        <h1 className="font-display text-3xl text-text-primary">Produto indisponível</h1>
+        <p className="mt-4 text-text-secondary">
+          Este produto não está disponível no momento. Consulte a coleção para ver itens ativos.
+        </p>
+        <Link
+          to="/colecao"
+          className="btn-primary mt-8 px-5 py-3"
+        >
+          Ver coleção
+        </Link>
+      </main>
+    )
+  }
 
   function handleQuantityChange(delta: number) {
     const next = quantity + delta
@@ -50,147 +74,87 @@ export function ProductDetail({ product }: ProductDetailProps) {
       return
     }
 
-    const heroImage = selectedVariant.images.find((i) => i.role === 'real-product') ?? selectedVariant.images[0]
+    const heroImage = activeImage || product.mainImageUrl || ''
     const snapshot: CartItemSnapshot = {
       productId: product.id,
       productName: product.name,
-      variantId: selectedVariant.id,
-      variantName: selectedVariant.name,
+      variantId: product.id,
+      variantName: product.name,
       slug: product.slug,
-      priceCents: selectedVariant.priceCents,
+      priceCents: product.priceCents,
       quantity: result.data,
-      image: heroImage,
+      image: {
+        src: heroImage,
+        alt: product.name,
+        role: 'real-product',
+        width: 1200,
+        height: 1200,
+      },
     }
 
     window.dispatchEvent(new CustomEvent(ADD_TO_CART_EVENT, { detail: snapshot }))
-    toast.success(`${product.name} — ${selectedVariant.name} adicionado ao carrinho`)
+    toast.success(`${product.name} adicionado ao carrinho`)
   }
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-12 grid grid-cols-1 md:grid-cols-2 gap-10">
-      {/* Gallery */}
       <div className="flex flex-col gap-3">
         <div className="relative rounded-[var(--radius)] overflow-hidden aspect-square bg-surface-elevated">
-          {activeImage && (
+          {activeImage ? (
             <img
-              src={activeImage.src}
-              alt={activeImage.alt}
-              width={activeImage.width}
-              height={activeImage.height}
+              src={activeImage}
+              alt={product.name}
+              width={1200}
+              height={1200}
               className="w-full h-full object-cover"
             />
+          ) : (
+            <div className="flex h-full items-center justify-center text-sm text-text-secondary">
+              Imagem indisponível
+            </div>
           )}
         </div>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => setImageRole('real-product')}
-            aria-pressed={imageRole === 'real-product'}
-            className={cn(
-              'flex-1 rounded-[var(--radius)] border py-2 text-sm font-medium transition-colors',
-              imageRole === 'real-product'
-                ? 'border-primary bg-primary text-primary-foreground'
-                : 'border-border text-text-secondary hover:border-primary',
-            )}
-          >
-            Produto real
-          </button>
-          <button
-            type="button"
-            onClick={() => setImageRole('layout')}
-            aria-pressed={imageRole === 'layout'}
-            className={cn(
-              'flex-1 rounded-[var(--radius)] border py-2 text-sm font-medium transition-colors',
-              imageRole === 'layout'
-                ? 'border-primary bg-primary text-primary-foreground'
-                : 'border-border text-text-secondary hover:border-primary',
-            )}
-          >
-            Layout
-          </button>
-        </div>
-        {layoutImage && realImage && (
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={() => setImageRole('real-product')}
-              className={cn(
-                'rounded-[var(--radius)] overflow-hidden border-2 transition-colors',
-                imageRole === 'real-product' ? 'border-primary' : 'border-transparent',
-              )}
-              aria-label="Ver imagem do produto real"
-            >
-              <img
-                src={realImage.src}
-                alt={realImage.alt}
-                width={120}
-                height={90}
-                loading="lazy"
-                className="w-full object-cover aspect-[4/3]"
-              />
-            </button>
-            <button
-              type="button"
-              onClick={() => setImageRole('layout')}
-              className={cn(
-                'rounded-[var(--radius)] overflow-hidden border-2 transition-colors',
-                imageRole === 'layout' ? 'border-primary' : 'border-transparent',
-              )}
-              aria-label="Ver imagem do layout de personalização"
-            >
-              <img
-                src={layoutImage.src}
-                alt={layoutImage.alt}
-                width={120}
-                height={90}
-                loading="lazy"
-                className="w-full object-cover aspect-[4/3]"
-              />
-            </button>
+
+        {galleryImages.length > 1 && (
+          <div className="grid grid-cols-3 gap-2">
+            {galleryImages.map((image, index) => (
+              <button
+                key={`${image}-${index}`}
+                type="button"
+                onClick={() => setSelectedImage(image)}
+                className={cn(
+                  'rounded-[var(--radius)] overflow-hidden border-2 transition-colors',
+                  selectedImage === image ? 'border-primary' : 'border-transparent',
+                )}
+                aria-label={`Ver imagem ${index + 1}`}
+              >
+                <img
+                  src={image}
+                  alt={`${product.name} imagem ${index + 1}`}
+                  width={120}
+                  height={90}
+                  loading="lazy"
+                  className="w-full object-cover aspect-[4/3]"
+                />
+              </button>
+            ))}
           </div>
         )}
       </div>
 
-      {/* Info */}
       <div className="flex flex-col gap-5">
         <div>
           <h1 className="font-display text-3xl text-text-primary">{product.name}</h1>
           <p className="mt-2 text-text-secondary">{product.description}</p>
         </div>
 
-        {/* Variant selector */}
         <div>
-          <p className="mb-2 text-sm font-semibold text-text-primary">Variante: {selectedVariant.name}</p>
-          <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Selecionar variante">
-            {product.variants.map((variant) => (
-              <button
-                key={variant.id}
-                type="button"
-                role="radio"
-                aria-checked={selectedVariant.id === variant.id}
-                onClick={() => setSelectedVariant(variant)}
-                className={cn(
-                  'rounded-[var(--radius)] border px-4 py-2 text-sm font-medium transition-colors',
-                  selectedVariant.id === variant.id
-                    ? 'border-primary bg-primary text-primary-foreground'
-                    : 'border-border text-text-secondary hover:border-primary',
-                )}
-              >
-                {variant.name}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Price */}
-        <div>
-          <p className="text-3xl font-bold text-text-primary">{formatCurrency(selectedVariant.priceCents)}</p>
+          <p className="text-3xl font-bold text-text-primary">{formatCurrency(product.priceCents)}</p>
           <p className="mt-1 text-sm text-text-secondary">
-            ou {formatInstallments(selectedVariant.priceCents, INSTALLMENTS)}
+            ou {formatInstallments(product.priceCents, INSTALLMENTS)}
           </p>
         </div>
 
-        {/* Quantity */}
         <div>
           <label htmlFor="quantity" className="mb-2 block text-sm font-semibold text-text-primary">
             Quantidade
@@ -233,18 +197,16 @@ export function ProductDetail({ product }: ProductDetailProps) {
           )}
         </div>
 
-        {/* Add to cart */}
         <button
           type="button"
           onClick={handleAddToCart}
-          className="w-full rounded-[var(--radius)] bg-primary py-3 font-semibold text-primary-foreground hover:bg-primary-hover transition-colors"
+          className="btn-primary w-full py-3"
         >
           Adicionar ao carrinho
         </button>
 
-        {/* Freight estimator */}
         <FreightEstimator
-          subtotalCents={selectedVariant.priceCents * quantity}
+          subtotalCents={product.priceCents * quantity}
           productId={product.id}
           quantity={quantity}
         />

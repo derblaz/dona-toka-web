@@ -19,7 +19,7 @@ function OrderPage() {
         </p>
         <Link
           to="/"
-          className="inline-block rounded-[var(--radius)] bg-primary px-8 py-3 font-semibold text-primary-foreground hover:bg-primary-hover transition-colors"
+          className="btn-primary px-8 py-3"
         >
           Voltar ao início
         </Link>
@@ -120,7 +120,7 @@ function OrderPage() {
         <div className="flex flex-col gap-2 text-center">
           <Link
             to="/colecao"
-            className="inline-block rounded-[var(--radius)] bg-primary px-8 py-3 font-semibold text-primary-foreground hover:bg-primary-hover transition-colors"
+            className="btn-primary px-8 py-3"
           >
             Continuar comprando
           </Link>
