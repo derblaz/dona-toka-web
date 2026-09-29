@@ -5,6 +5,7 @@ export interface CheckoutCustomer {
   name: string
   email: string
   phone: string
+  cpfCnpj: string
 }
 
 export interface DeliveryAddress {
@@ -17,37 +18,23 @@ export interface DeliveryAddress {
   state: string
 }
 
-export type PaymentMethod =
-  | { type: 'pix' }
-  | {
-      type: 'card'
-      cardholderName: string
-      /** Formatted card number, e.g. "1234 5678 9012 3456" */
-      cardNumber: string
-      expiry: string
-      cvv: string
-    }
-
-export interface OrderDraft {
+export interface CheckoutDraft {
   customer: CheckoutCustomer
   address: DeliveryAddress
   notes: string
-  payment: PaymentMethod
   items: CartItem[]
   freightQuote: FreightQuote
 }
 
-export interface MockOrder {
+export interface CheckoutConfirmationSnapshot {
   orderId: string
   createdAt: string
-  status: 'confirmed'
-  paymentType: 'pix' | 'card'
-  /** Delivery snapshot — no raw card values */
+  customer: CheckoutCustomer
   deliverySnapshot: DeliveryAddress
-  /** Item snapshot */
   itemsSnapshot: CartItem[]
   subtotalCents: number
-  freightCents: number
+  shippingCents: number
   totalCents: number
   estimatedDelivery: string
+  notes: string
 }

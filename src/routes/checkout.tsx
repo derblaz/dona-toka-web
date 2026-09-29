@@ -1,21 +1,26 @@
-import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
-import { useMemo, useState } from 'react'
-import { toast } from 'sonner'
+import { createFileRoute, redirect } from '@tanstack/react-router'
+import { useState } from 'react'
 import { useCartStore } from '@/features/cart/hooks'
 import * as cartStore from '@/features/cart/store'
+import { ShippingQuoteOutdatedError } from '@/features/checkout/api'
+import { useGuestCheckout } from '@/features/checkout/hooks'
+import { redirectToHostedCheckout } from '@/features/checkout/navigation'
 import { formatCurrency } from '@/lib/currency'
 import { normalizeCep, quoteFreight } from '@/lib/freight'
-import { confirmCheckout } from '@/features/checkout/service'
+import { formatCep, formatCpfCnpj, formatPhone } from '@/lib/masks'
+import {
+  createCheckoutConfirmationSnapshot,
+  saveCheckoutConfirmationSnapshot,
+} from '@/features/checkout/service'
 import {
   customerSchema,
   addressSchema,
   notesSchema,
-  paymentSchema,
 } from '@/features/checkout/schemas'
 import { ShippingQuoteValidationError, useShippingQuote } from '@/features/shipping/hooks'
 import type { ShippingOption, ShippingQuoteResult } from '@/features/shipping/types'
 import type { FreightQuote } from '@/lib/freight'
-import type { CustomerInput, AddressInput, CardPaymentInput } from '@/features/checkout/schemas'
+import type { AddressInput, CustomerInput } from '@/features/checkout/schemas'
 
 export const Route = createFileRoute('/checkout')({
   beforeLoad() {
@@ -27,12 +32,11 @@ export const Route = createFileRoute('/checkout')({
   component: CheckoutPage,
 })
 
-type PaymentType = 'pix' | 'card'
-
 interface FieldErrors {
   name?: string
   email?: string
   phone?: string
+  cpfCnpj?: string
   cep?: string
   street?: string
   number?: string
@@ -41,19 +45,20 @@ interface FieldErrors {
   city?: string
   state?: string
   notes?: string
-  cardholderName?: string
-  cardNumber?: string
-  expiry?: string
-  cvv?: string
   freight?: string
   general?: string
 }
 
 function CheckoutPage() {
   const { items, subtotalCents } = useCartStore()
-  const navigate = useNavigate()
+  const guestCheckout = useGuestCheckout()
 
-  const [customer, setCustomer] = useState<CustomerInput>({ name: '', email: '', phone: '' })
+  const [customer, setCustomer] = useState<CustomerInput>({
+    name: '',
+    email: '',
+    phone: '',
+    cpfCnpj: '',
+  })
   const [address, setAddress] = useState<AddressInput>({
     cep: '',
     street: '',
@@ -64,21 +69,18 @@ function CheckoutPage() {
     state: '',
   })
   const [notes, setNotes] = useState('')
-  const [paymentType, setPaymentType] = useState<PaymentType>('pix')
-  const [card, setCard] = useState<Omit<CardPaymentInput, 'type'>>({
-    cardholderName: '',
-    cardNumber: '',
-    expiry: '',
-    cvv: '',
-  })
   const [freightQuote, setFreightQuote] = useState<FreightQuote | null>(null)
   const [shippingOptions, setShippingOptions] = useState<ShippingOption[]>([])
   const [selectedShippingCode, setSelectedShippingCode] = useState<string | null>(null)
+  const [shippingUpdate, setShippingUpdate] = useState<{
+    shippingCents: number
+    totalCents: number
+  } | null>(null)
   const [errors, setErrors] = useState<FieldErrors>({})
-  const [submitting, setSubmitting] = useState(false)
   const shippingQuote = useShippingQuote()
 
   const totalCents = subtotalCents + (freightQuote?.amountCents ?? 0)
+  const displayTotalCents = shippingUpdate?.totalCents ?? totalCents
 
   function mapShippingQuoteToOption(result: ShippingQuoteResult, option: ShippingOption): FreightQuote {
     return {
@@ -101,6 +103,7 @@ function CheckoutPage() {
       setFreightQuote(null)
       setShippingOptions([])
       setSelectedShippingCode(null)
+      setShippingUpdate(null)
       setErrors((e) => ({ ...e, freight: 'CEP inválido. Informe um CEP com 8 dígitos.' }))
       return
     }
@@ -116,6 +119,7 @@ function CheckoutPage() {
             setFreightQuote(null)
             setShippingOptions([])
             setSelectedShippingCode(null)
+            setShippingUpdate(null)
             setErrors((e) => ({ ...e, freight: 'Não foi possível calcular o frete para este CEP. Tente novamente.' }))
             return
           }
@@ -126,6 +130,7 @@ function CheckoutPage() {
           setSelectedShippingCode(cheapest.serviceCode)
           const nextQuote = mapShippingQuoteToOption(result, cheapest)
           setFreightQuote(nextQuote)
+          setShippingUpdate(null)
           setErrors((e) => ({ ...e, freight: undefined }))
         },
         onError: (error) => {
@@ -145,6 +150,7 @@ function CheckoutPage() {
             setShippingOptions([fallbackOption])
             setSelectedShippingCode(fallbackOption.serviceCode)
             setFreightQuote(nextQuote)
+            setShippingUpdate(null)
             setErrors((e) => ({ ...e, freight: undefined }))
             return
           }
@@ -155,6 +161,7 @@ function CheckoutPage() {
           setFreightQuote(null)
           setShippingOptions([])
           setSelectedShippingCode(null)
+          setShippingUpdate(null)
           setErrors((e) => ({ ...e, freight: message }))
         },
       },
@@ -197,25 +204,17 @@ function CheckoutPage() {
       newErrors.notes = notesResult.error.issues[0]?.message
     }
 
-    const paymentInput =
-      paymentType === 'pix' ? { type: 'pix' as const } : { type: 'card' as const, ...card }
-    const paymentResult = paymentSchema.safeParse(paymentInput)
-    if (!paymentResult.success) {
-      for (const issue of paymentResult.error.issues) {
-        const field = issue.path[0] as string
-        if (
-          field === 'cardholderName' ||
-          field === 'cardNumber' ||
-          field === 'expiry' ||
-          field === 'cvv'
-        ) {
-          newErrors[field as keyof FieldErrors] = issue.message
-        }
-      }
-    }
-
     if (!freightQuote) {
       newErrors.freight = 'Calcule o frete antes de continuar'
+    }
+
+    const selectedShippingOption = shippingOptions.find(
+      (option) => option.serviceCode === selectedShippingCode,
+    )
+
+    const shippingServiceId = selectedShippingOption ? Number(selectedShippingOption.serviceCode) : Number.NaN
+    if (!selectedShippingOption || Number.isNaN(shippingServiceId)) {
+      newErrors.freight = 'Selecione uma opção de frete válida antes de continuar.'
     }
 
     if (Object.keys(newErrors).length > 0) {
@@ -224,26 +223,53 @@ function CheckoutPage() {
     }
 
     setErrors({})
-    setSubmitting(true)
+    setShippingUpdate(null)
 
     try {
-      const order = confirmCheckout({
+      const confirmation = await guestCheckout.mutateAsync({
+        email: customerResult.data!.email,
+        fullName: customerResult.data!.name,
+        cpfCnpj: customerResult.data!.cpfCnpj,
+        phone: customerResult.data!.phone,
+        address: addressResult.data!,
+        items: items.map((item) => ({
+          productId: item.productId,
+          quantity: item.quantity,
+        })),
+        itemsTotalCents: subtotalCents,
+        shippingServiceId,
+        shippingCents: freightQuote!.amountCents,
+      })
+
+      const snapshot = createCheckoutConfirmationSnapshot({
         customer: customerResult.data!,
         address: addressResult.data!,
         notes: notesResult.data ?? '',
-        payment: paymentResult.data!,
         items,
         freightQuote: freightQuote!,
       })
 
+      // Key the snapshot by the backend order id so /pedido/{orderId} finds it
+      // when InfinitePay redirects the customer back.
+      saveCheckoutConfirmationSnapshot({ ...snapshot, orderId: confirmation.orderId })
       cartStore.clearCart()
-      toast.success('Pedido confirmado!')
-      await navigate({ to: '/pedido/$orderId', params: { orderId: order.orderId } })
-    } catch (_err) {
-      toast.error('Não foi possível confirmar seu pedido. Tente novamente.')
-      setErrors({ general: 'Erro ao confirmar pedido. Tente novamente.' })
-    } finally {
-      setSubmitting(false)
+      redirectToHostedCheckout(confirmation.checkoutUrl)
+    } catch (error) {
+      if (error instanceof ShippingQuoteOutdatedError) {
+        setFreightQuote((current) =>
+          current ? { ...current, amountCents: error.correction.shippingCents } : current,
+        )
+        setShippingUpdate({
+          shippingCents: error.correction.shippingCents,
+          totalCents: error.correction.totalCents,
+        })
+        setErrors((current) => ({ ...current, freight: undefined, general: undefined }))
+        return
+      }
+
+      setErrors({
+        general: error instanceof Error ? error.message : 'Não foi possível concluir o checkout. Tente novamente.',
+      })
     }
   }
 
@@ -270,6 +296,16 @@ function CheckoutPage() {
                   required
                 />
                 <FormField
+                  label="CPF ou CNPJ"
+                  id="cpfCnpj"
+                  autoComplete="off"
+                  placeholder="000.000.000-00"
+                  value={customer.cpfCnpj}
+                  onChange={(v) => setCustomer((c) => ({ ...c, cpfCnpj: formatCpfCnpj(v) }))}
+                  error={errors.cpfCnpj}
+                  required
+                />
+                <FormField
                   label="E-mail"
                   id="email"
                   type="email"
@@ -286,7 +322,7 @@ function CheckoutPage() {
                   autoComplete="tel"
                   placeholder="(11) 91234-5678"
                   value={customer.phone}
-                  onChange={(v) => setCustomer((c) => ({ ...c, phone: v }))}
+                  onChange={(v) => setCustomer((c) => ({ ...c, phone: formatPhone(v) }))}
                   error={errors.phone}
                   required
                 />
@@ -307,8 +343,9 @@ function CheckoutPage() {
                       placeholder="00000-000"
                       value={address.cep}
                       onChange={(v) => {
-                        setAddress((a) => ({ ...a, cep: v }))
+                        setAddress((a) => ({ ...a, cep: formatCep(v) }))
                         setFreightQuote(null)
+                        setShippingUpdate(null)
                       }}
                       error={errors.cep}
                       required
@@ -351,6 +388,7 @@ function CheckoutPage() {
                               onChange={() => {
                                 setSelectedShippingCode(option.serviceCode)
                                 setFreightQuote(optionQuote)
+                                setShippingUpdate(null)
                                 setErrors((e) => ({ ...e, freight: undefined }))
                               }}
                               className="accent-primary"
@@ -375,6 +413,16 @@ function CheckoutPage() {
                     {freightQuote.amountCents > 0 &&
                       ` (${formatCurrency(freightQuote.amountCents)})`}
                   </p>
+                )}
+                {shippingUpdate && (
+                  <div role="status" className="rounded-[var(--radius)] border border-warning/30 bg-warning/10 p-3 text-sm text-text-primary">
+                    <p className="font-medium">Frete atualizado pelo backend</p>
+                    <p className="mt-1 text-text-secondary">
+                      O valor foi ajustado para {formatCurrency(shippingUpdate.shippingCents)} e o total
+                      agora é {formatCurrency(shippingUpdate.totalCents)}. Revise os dados e tente
+                      novamente.
+                    </p>
+                  </div>
                 )}
                 <FormField
                   label="Rua / Avenida"
@@ -469,93 +517,13 @@ function CheckoutPage() {
               )}
             </fieldset>
 
-            {/* Payment */}
             <fieldset className="rounded-[var(--radius)] border border-border bg-surface p-6">
-              <legend className="sr-only">Forma de pagamento</legend>
-              <h2 className="mb-4 text-lg font-semibold text-text-primary">Forma de pagamento</h2>
-              <div className="flex gap-4 mb-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="paymentType"
-                    value="pix"
-                    checked={paymentType === 'pix'}
-                    onChange={() => setPaymentType('pix')}
-                    className="accent-primary"
-                  />
-                  <span className="font-medium">PIX</span>
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="paymentType"
-                    value="card"
-                    checked={paymentType === 'card'}
-                    onChange={() => setPaymentType('card')}
-                    className="accent-primary"
-                  />
-                  <span className="font-medium">Cartão de crédito</span>
-                </label>
-              </div>
-
-              {paymentType === 'pix' && (
-                <p className="text-sm text-text-secondary">
-                  Após confirmar o pedido, você receberá as instruções de pagamento PIX por
-                  e-mail.
-                </p>
-              )}
-
-              {paymentType === 'card' && (
-                <div className="flex flex-col gap-4">
-                  <FormField
-                    label="Nome no cartão"
-                    id="cardholderName"
-                    autoComplete="cc-name"
-                    value={card.cardholderName}
-                    onChange={(v) => setCard((c) => ({ ...c, cardholderName: v }))}
-                    error={errors.cardholderName}
-                    required
-                  />
-                  <FormField
-                    label="Número do cartão"
-                    id="cardNumber"
-                    autoComplete="cc-number"
-                    placeholder="1234 5678 9012 3456"
-                    value={card.cardNumber}
-                    onChange={(v) => setCard((c) => ({ ...c, cardNumber: v }))}
-                    error={errors.cardNumber}
-                    required
-                  />
-                  <div className="flex gap-3">
-                    <div className="w-28">
-                      <FormField
-                        label="Validade"
-                        id="expiry"
-                        autoComplete="cc-exp"
-                        placeholder="MM/AA"
-                        maxLength={5}
-                        value={card.expiry}
-                        onChange={(v) => setCard((c) => ({ ...c, expiry: v }))}
-                        error={errors.expiry}
-                        required
-                      />
-                    </div>
-                    <div className="w-24">
-                      <FormField
-                        label="CVV"
-                        id="cvv"
-                        autoComplete="cc-csc"
-                        placeholder="123"
-                        maxLength={4}
-                        value={card.cvv}
-                        onChange={(v) => setCard((c) => ({ ...c, cvv: v }))}
-                        error={errors.cvv}
-                        required
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
+              <legend className="sr-only">Pagamento hospedado</legend>
+              <h2 className="mb-4 text-lg font-semibold text-text-primary">Pagamento hospedado</h2>
+              <p className="text-sm text-text-secondary">
+                O storefront coleta apenas contato e entrega. O pagamento acontece em uma página
+                hospedada da InfinitePay.
+              </p>
             </fieldset>
           </div>
 
@@ -606,7 +574,7 @@ function CheckoutPage() {
               <hr className="border-border" />
               <div className="flex justify-between font-semibold">
                 <span>Total estimado</span>
-                <span>{formatCurrency(totalCents)}</span>
+                <span>{formatCurrency(displayTotalCents)}</span>
               </div>
               <p className="text-xs text-text-secondary italic">
                 Prazo de entrega é uma estimativa baseada no CEP informado.
@@ -618,10 +586,10 @@ function CheckoutPage() {
               )}
               <button
                 type="submit"
-                disabled={submitting}
+                disabled={guestCheckout.isPending}
                 className="w-full rounded-[var(--radius)] bg-primary py-3 font-semibold text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
               >
-                {submitting ? 'Confirmando...' : 'Confirmar pedido'}
+                {guestCheckout.isPending ? 'Confirmando...' : 'Fazer pagamento'}
               </button>
             </div>
           </aside>

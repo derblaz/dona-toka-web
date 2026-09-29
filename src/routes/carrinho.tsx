@@ -159,7 +159,7 @@ function CartPage() {
               href="/checkout"
               className="btn-primary w-full py-3 text-center"
             >
-              Ir para o checkout
+              Finalizar Pedido
             </a>
           </div>
         </aside>

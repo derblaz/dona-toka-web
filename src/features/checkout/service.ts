@@ -1,72 +1,52 @@
-import { checkoutFormSchema } from './schemas'
-import type { OrderDraft, MockOrder } from './models'
+import type { CheckoutConfirmationSnapshot, CheckoutDraft } from './models'
 
-const SESSION_ORDERS_KEY = 'dona-toka:session-orders'
+const SESSION_CONFIRMATION_SNAPSHOTS_KEY = 'dona-toka:checkout-confirmation-snapshots'
 
-function generateOrderId(): string {
-  return `dt-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+function generateConfirmationId(): string {
+  return `chk-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
 }
 
-function loadSessionOrders(): Record<string, MockOrder> {
+function loadSessionSnapshots(): Record<string, CheckoutConfirmationSnapshot> {
   try {
-    const raw = sessionStorage.getItem(SESSION_ORDERS_KEY)
+    const raw = sessionStorage.getItem(SESSION_CONFIRMATION_SNAPSHOTS_KEY)
     if (!raw) return {}
-    return JSON.parse(raw) as Record<string, MockOrder>
+    return JSON.parse(raw) as Record<string, CheckoutConfirmationSnapshot>
   } catch {
     return {}
   }
 }
 
-function saveSessionOrder(order: MockOrder): void {
-  const orders = loadSessionOrders()
-  orders[order.orderId] = order
-  sessionStorage.setItem(SESSION_ORDERS_KEY, JSON.stringify(orders))
+function saveSessionSnapshot(snapshot: CheckoutConfirmationSnapshot): void {
+  const snapshots = loadSessionSnapshots()
+  snapshots[snapshot.orderId] = snapshot
+  sessionStorage.setItem(SESSION_CONFIRMATION_SNAPSHOTS_KEY, JSON.stringify(snapshots))
 }
 
-export function getSessionOrder(orderId: string): MockOrder | null {
-  const orders = loadSessionOrders()
-  return orders[orderId] ?? null
-}
+export function createCheckoutConfirmationSnapshot(
+  draft: CheckoutDraft,
+): CheckoutConfirmationSnapshot {
+  const subtotalCents = draft.items.reduce((sum, item) => sum + item.priceCents * item.quantity, 0)
+  const shippingCents = draft.freightQuote.amountCents
 
-export function confirmCheckout(draft: OrderDraft): MockOrder {
-  const validation = checkoutFormSchema.safeParse({
-    customer: draft.customer,
-    address: draft.address,
-    notes: draft.notes,
-    payment: draft.payment,
-  })
-
-  if (!validation.success) {
-    throw new Error('Dados de checkout inválidos: ' + validation.error.message)
-  }
-
-  const subtotalCents = draft.items.reduce((sum, i) => sum + i.priceCents * i.quantity, 0)
-  const freightCents = draft.freightQuote.amountCents
-  const totalCents = subtotalCents + freightCents
-
-  const orderId = generateOrderId()
-
-  const order: MockOrder = {
-    orderId,
+  return {
+    orderId: generateConfirmationId(),
     createdAt: new Date().toISOString(),
-    status: 'confirmed',
-    paymentType: draft.payment.type,
-    deliverySnapshot: {
-      cep: draft.address.cep,
-      street: draft.address.street,
-      number: draft.address.number,
-      complement: draft.address.complement,
-      neighborhood: draft.address.neighborhood,
-      city: draft.address.city,
-      state: draft.address.state,
-    },
-    itemsSnapshot: draft.items.map((i) => ({ ...i })),
+    customer: { ...draft.customer },
+    deliverySnapshot: { ...draft.address },
+    itemsSnapshot: draft.items.map((item) => ({ ...item })),
     subtotalCents,
-    freightCents,
-    totalCents,
+    shippingCents,
+    totalCents: subtotalCents + shippingCents,
     estimatedDelivery: draft.freightQuote.estimatedDays,
+    notes: draft.notes,
   }
+}
 
-  saveSessionOrder(order)
-  return order
+export function saveCheckoutConfirmationSnapshot(snapshot: CheckoutConfirmationSnapshot): void {
+  saveSessionSnapshot(snapshot)
+}
+
+export function getSessionOrder(orderId: string): CheckoutConfirmationSnapshot | null {
+  const snapshots = loadSessionSnapshots()
+  return snapshots[orderId] ?? null
 }

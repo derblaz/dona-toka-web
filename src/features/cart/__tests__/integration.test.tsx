@@ -150,13 +150,13 @@ describe('cart route editing', () => {
 
     renderApp('/carrinho')
 
-    expect(await screen.findByRole('link', { name: /ir para o checkout/i })).toBeInTheDocument()
+    expect(await screen.findByRole('link', { name: /finalizar pedido/i })).toBeInTheDocument()
 
     const removeBtn = screen.getByRole('button', { name: /remover touca cirúrgica/i })
     await user.click(removeBtn)
 
     await screen.findByRole('heading', { name: /seu carrinho está vazio/i })
-    expect(screen.queryByRole('link', { name: /ir para o checkout/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: /finalizar pedido/i })).not.toBeInTheDocument()
   })
 
   it('clearing the cart via the clear button renders the empty-cart state', async () => {
