@@ -145,6 +145,24 @@ describe('checkout form — validation', () => {
   })
 })
 
+describe('checkout — freight quote failures', () => {
+  it('shows a backend error when freight calculation fails for a valid CEP', async () => {
+    _resetForTest([cartItem])
+    renderRoute('/checkout')
+    await screen.findByRole('heading', { name: /finalizar/i })
+
+    await userEvent.type(screen.getByLabelText(/nome completo/i), 'Ana Lima')
+    await userEvent.type(screen.getByLabelText(/cpf ou cnpj/i), '12345678909')
+    await userEvent.type(screen.getByLabelText(/e-mail/i), 'ana@example.com')
+    await userEvent.type(screen.getByLabelText(/telefone/i), '11912345678')
+    await userEvent.type(screen.getByLabelText(/cep/i), '01310100')
+    await userEvent.click(screen.getByRole('button', { name: /calcular frete/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/não foi possível calcular o frete/i)
+    expect(screen.queryByText(/estimativa de frete/i)).toBeNull()
+  })
+})
+
 describe('checkout — input masking', () => {
   it('displays masked phone and CPF/CNPJ values while keeping normalized digits available', async () => {
     _resetForTest([cartItem])

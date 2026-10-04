@@ -5,8 +5,16 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { routeTree } from '@/routeTree.gen'
 import { _resetForTest } from '@/features/cart/store'
 import type { CartItem } from '@/features/cart/models'
-import { FREE_SHIPPING_THRESHOLD_CENTS } from '@/lib/freight'
 import { apiClient } from '@/lib/api-client'
+import { catalogRepository } from '@/features/catalog/repository'
+
+vi.mock('@/features/catalog/repository', () => ({
+  catalogRepository: {
+    getCollectionProducts: vi.fn(),
+    getProductBySlug: vi.fn(),
+    getProducts: vi.fn(),
+  },
+}))
 
 const mockImage = {
   src: '/img/toca.jpg',
@@ -93,6 +101,22 @@ describe('Cart freight estimator', () => {
     expect(screen.getByText('Touca Cirúrgica')).toBeInTheDocument()
   })
 
+  it('shows a backend error when freight calculation fails for a valid CEP', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(apiClient, 'post').mockRejectedValue(new Error('offline'))
+    _resetForTest([makeCartItem()])
+    renderCart()
+
+    await screen.findByText('Touca Cirúrgica')
+
+    const cepInput = screen.getByLabelText(/cep para estimativa de frete/i)
+    await user.type(cepInput, '01310100')
+    await user.click(screen.getByRole('button', { name: /calcular/i }))
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/não foi possível calcular o frete/i)
+    expect(screen.queryByRole('status')).toBeNull()
+  })
+
   it('updates the total display to include freight when a valid CEP is provided', async () => {
     const user = userEvent.setup()
     vi.spyOn(apiClient, 'post').mockResolvedValue({
@@ -120,14 +144,15 @@ describe('Cart freight estimator', () => {
 
   it('shows free shipping when subtotal meets the threshold', async () => {
     const user = userEvent.setup()
+    const freeShippingThresholdCents = 29900
     vi.spyOn(apiClient, 'post').mockResolvedValue({
       data: {
         options: [{ serviceCode: '1', carrierName: 'PAC', priceCents: 0, estimatedDays: 7 }],
         freeShippingApplied: true,
-        subtotalCents: FREE_SHIPPING_THRESHOLD_CENTS,
+        subtotalCents: freeShippingThresholdCents,
       },
     })
-    const unitPrice = FREE_SHIPPING_THRESHOLD_CENTS
+    const unitPrice = freeShippingThresholdCents
     _resetForTest([makeCartItem({ priceCents: unitPrice, quantity: 1 })])
     renderCart()
 
@@ -147,6 +172,17 @@ describe('Cart freight estimator', () => {
 describe('Product detail freight estimator', () => {
   it('can estimate freight on the product detail page without adding the item to the cart', async () => {
     const user = userEvent.setup()
+    vi.mocked(catalogRepository.getProductBySlug).mockResolvedValue({
+      id: 'prod-1',
+      slug: 'toca-cirurgica',
+      name: 'Touca Cirúrgica',
+      category: 'toca-cirurgica',
+      description: 'Touca confortável para uso diário.',
+      priceCents: 4500,
+      active: true,
+      mainImageUrl: 'https://cdn.example.com/touca.jpg',
+      galleryImageUrls: ['https://cdn.example.com/touca.jpg'],
+    })
     vi.spyOn(apiClient, 'post').mockResolvedValue({
       data: {
         options: [{ serviceCode: '1', carrierName: 'PAC', priceCents: 1590, estimatedDays: 7 }],

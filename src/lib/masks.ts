@@ -10,12 +10,28 @@ export function stripNonDigits(value: string): string {
 }
 
 /**
+ * Normalize a Brazilian phone input to local digits only.
+ *
+ * Removes punctuation, then drops a leading `55` country code when present
+ * so pasted values like `+55 (11) 99988-7766` keep the correct DDD.
+ */
+export function normalizePhoneDigits(value: string): string {
+  const digits = stripNonDigits(value)
+
+  if (digits.length > 11 && digits.startsWith('55')) {
+    return digits.slice(2, 13)
+  }
+
+  return digits.slice(0, 11)
+}
+
+/**
  * Format a Brazilian phone as `(99) 99999-9999` (11 digits) or
  * `(99) 9999-9999` (10 digits), progressively while typing.
  * Input is normalized first and limited to 11 digits.
  */
 export function formatPhone(value: string): string {
-  const digits = stripNonDigits(value).slice(0, 11)
+  const digits = normalizePhoneDigits(value)
   const len = digits.length
 
   if (len === 0) return ''

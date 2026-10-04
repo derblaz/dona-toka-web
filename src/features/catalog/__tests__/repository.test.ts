@@ -83,14 +83,11 @@ describe('catalogRepository', () => {
     expect(products[0].slug).toBe('touca-classica')
   })
 
-  it('falls back to the direct product catalog when the backend is unavailable', async () => {
+  it('surfaces backend failures instead of using a local fallback catalog', async () => {
     vi.mocked(apiClient.get).mockRejectedValue(new Error('offline'))
 
-    const products = await catalogRepository.getProducts()
-    expect(products).toEqual(expect.arrayContaining([
-      expect.objectContaining({ slug: 'toca-cirurgica', active: true }),
-    ]))
-    expect(await catalogRepository.getProductBySlug('toca-cirurgica')).toMatchObject({ slug: 'toca-cirurgica' })
+    await expect(catalogRepository.getProducts()).rejects.toThrow('offline')
+    await expect(catalogRepository.getProductBySlug('toca-cirurgica')).rejects.toThrow('offline')
   })
 
   it('returns an empty list for failed or empty backend catalog responses', async () => {

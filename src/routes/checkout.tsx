@@ -6,7 +6,7 @@ import { ShippingQuoteOutdatedError } from '@/features/checkout/api'
 import { useGuestCheckout } from '@/features/checkout/hooks'
 import { redirectToHostedCheckout } from '@/features/checkout/navigation'
 import { formatCurrency } from '@/lib/currency'
-import { normalizeCep, quoteFreight } from '@/lib/freight'
+import { normalizeCep } from '@/lib/freight'
 import { formatCep, formatCpfCnpj, formatPhone } from '@/lib/masks'
 import {
   createCheckoutConfirmationSnapshot,
@@ -134,30 +134,9 @@ function CheckoutPage() {
           setErrors((e) => ({ ...e, freight: undefined }))
         },
         onError: (error) => {
-          const localQuote = quoteFreight({ cep: normalizedCep, subtotalCents })
-
-          if (localQuote.ok) {
-            const fallbackOption: ShippingOption = {
-              serviceCode: 'local-estimate',
-              carrierName: localQuote.quote.amountCents === 0 ? 'Frete grátis' : 'PAC',
-              priceCents: localQuote.quote.amountCents,
-              estimatedDays: localQuote.quote.estimatedDays.includes('5–7') ? 7 : localQuote.quote.estimatedDays.includes('7–10') ? 10 : 15,
-            }
-            const nextQuote = mapShippingQuoteToOption(
-              { options: [fallbackOption], freeShippingApplied: localQuote.quote.amountCents === 0, subtotalCents },
-              fallbackOption,
-            )
-            setShippingOptions([fallbackOption])
-            setSelectedShippingCode(fallbackOption.serviceCode)
-            setFreightQuote(nextQuote)
-            setShippingUpdate(null)
-            setErrors((e) => ({ ...e, freight: undefined }))
-            return
-          }
-
           const message = error instanceof ShippingQuoteValidationError
             ? error.message
-            : localQuote.error.message
+            : 'Não foi possível calcular o frete para este CEP. Tente novamente.'
           setFreightQuote(null)
           setShippingOptions([])
           setSelectedShippingCode(null)

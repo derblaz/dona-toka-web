@@ -70,6 +70,15 @@ describe('buildGuestCheckoutPayload', () => {
     expect(payload.address.cep).toBe('01310100')
   })
 
+  it('drops a leading +55 country code from the phone before sending to InfinitePay', () => {
+    const payload = buildGuestCheckoutPayload({
+      ...variables,
+      phone: '+55 (11) 99988-7766',
+    })
+
+    expect(payload.phone).toBe('11999887766')
+  })
+
   it('accepts a formatted CNPJ and strips it to digits only', () => {
     const payload = buildGuestCheckoutPayload({
       ...variables,

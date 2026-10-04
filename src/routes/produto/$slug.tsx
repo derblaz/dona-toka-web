@@ -12,6 +12,7 @@ function ProductPage() {
   const { slug } = Route.useParams()
   const [product, setProduct] = useState<Product | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   useEffect(() => {
     let active = true
@@ -21,9 +22,11 @@ function ProductPage() {
         const catalogProduct = await catalogRepository.getProductBySlug(slug)
         if (!active) return
         setProduct(catalogProduct ?? null)
+        setLoadError(null)
       } catch {
         if (!active) return
         setProduct(null)
+        setLoadError('Não foi possível carregar o produto no momento.')
       } finally {
         if (active) setIsLoading(false)
       }
@@ -45,6 +48,21 @@ function ProductPage() {
   }
 
   if (!product) {
+    if (loadError) {
+      return (
+        <main className="mx-auto max-w-5xl px-6 py-20 text-center">
+          <h1 className="font-display text-3xl text-text-primary">Erro ao carregar produto</h1>
+          <p className="mt-4 text-text-secondary">{loadError}</p>
+          <a
+            href="/colecao"
+            className="btn-primary mt-8 px-5 py-3"
+          >
+            Ver coleção
+          </a>
+        </main>
+      )
+    }
+
     return (
       <main className="mx-auto max-w-5xl px-6 py-20 text-center">
         <h1 className="font-display text-3xl text-text-primary">Produto não encontrado</h1>

@@ -1,31 +1,6 @@
 import { apiClient } from '@/lib/api-client'
 import type { CatalogApiEnvelope, CatalogProductPayload, Product } from './models'
 
-const FALLBACK_PRODUCTS: Product[] = [
-  {
-    id: 'toca-cirurgica',
-    slug: 'toca-cirurgica',
-    name: 'Touca Cirúrgica',
-    category: 'toca-cirurgica',
-    description: 'Touca cirúrgica artesanal com tecido respirável e ajuste confortável.',
-    priceCents: 4500,
-    active: true,
-    mainImageUrl: '/hero-modelo.png',
-    galleryImageUrls: ['/hero-modelo.png', '/logo-dona-toka.png'],
-  },
-  {
-    id: 'gorro',
-    slug: 'gorro',
-    name: 'Gorro',
-    category: 'gorro',
-    description: 'Gorro confortável e elegante, feito com tecido de qualidade.',
-    priceCents: 4200,
-    active: true,
-    mainImageUrl: '/hero-modelo.png',
-    galleryImageUrls: ['/hero-modelo.png'],
-  },
-]
-
 export interface CatalogRepository {
   getProducts(): Promise<Product[]>
   getProductBySlug(slug: string): Promise<Product | undefined>
@@ -59,25 +34,17 @@ function normalizeProduct(payload: CatalogProductPayload): Product {
 }
 
 async function getProducts(): Promise<Product[]> {
-  try {
-    const { data } = await apiClient.get<CatalogApiEnvelope<CatalogProductPayload[]>>('/api/v1/catalog/products')
-    return (data.data ?? [])
-      .map(normalizeProduct)
-      .filter((product) => product.active)
-  } catch {
-    return FALLBACK_PRODUCTS
-  }
+  const { data } = await apiClient.get<CatalogApiEnvelope<CatalogProductPayload[]>>('/api/v1/catalog/products')
+  return (data.data ?? [])
+    .map(normalizeProduct)
+    .filter((product) => product.active)
 }
 
 async function getProductBySlug(slug: string): Promise<Product | undefined> {
   if (!slug || !slug.trim()) return undefined
 
-  try {
-    const products = await getProducts()
-    return products.find((product) => product.slug === slug.trim())
-  } catch {
-    return FALLBACK_PRODUCTS.find((product) => product.slug === slug.trim())
-  }
+  const products = await getProducts()
+  return products.find((product) => product.slug === slug.trim())
 }
 
 async function getCollectionProducts(): Promise<Product[]> {

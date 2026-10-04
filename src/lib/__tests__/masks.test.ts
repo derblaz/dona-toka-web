@@ -33,7 +33,8 @@ describe('formatPhone', () => {
 
   it('strips punctuation from pasted formatted input and limits it to 11 digits', () => {
     expect(formatPhone('(11) 99988-7766')).toBe('(11) 99988-7766')
-    expect(formatPhone('+55 (11) 99988-7766')).toBe('(55) 11999-8877')
+    expect(formatPhone('+55 (11) 99988-7766')).toBe('(11) 99988-7766')
+    expect(formatPhone('+55 (55) 85999-4622')).toBe('(55) 85999-4622')
     expect(formatPhone('119998877661234')).toBe('(11) 99988-7766')
   })
 })

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
-import { normalizeCep, quoteFreight } from '@/lib/freight'
+import { normalizeCep } from '@/lib/freight'
 import { formatCurrency } from '@/lib/currency'
 import { ShippingQuoteValidationError, useShippingQuote } from '@/features/shipping/hooks'
 import type { FreightQuote } from '@/lib/freight'
@@ -116,32 +116,9 @@ export function FreightEstimator({ subtotalCents, productId, quantity = 1, items
           setCepError(null)
         },
         onError: (error) => {
-          const localQuote = quoteFreight({ cep: normalizedCep, subtotalCents })
-
-          if (localQuote.ok) {
-            const fallbackOption: ShippingOption = {
-              serviceCode: 'local-estimate',
-              carrierName: localQuote.quote.amountCents === 0 ? 'Frete grátis' : 'PAC',
-              priceCents: localQuote.quote.amountCents,
-              estimatedDays: localQuote.quote.estimatedDays.includes('5–7') ? 7 : localQuote.quote.estimatedDays.includes('7–10') ? 10 : 15,
-            }
-            const result: ShippingQuoteResult = {
-              options: [fallbackOption],
-              freeShippingApplied: localQuote.quote.amountCents === 0,
-              subtotalCents,
-            }
-            const nextQuote = getQuoteForOption(result, fallbackOption)
-            setShippingOptions([fallbackOption])
-            setSelectedCode(fallbackOption.serviceCode)
-            setQuote(nextQuote)
-            onQuote?.(nextQuote)
-            setCepError(null)
-            return
-          }
-
           const message = error instanceof ShippingQuoteValidationError
             ? error.message
-            : localQuote.error.message
+            : 'Não foi possível calcular o frete para este CEP. Tente novamente.'
           finishWithError(message)
         },
       },

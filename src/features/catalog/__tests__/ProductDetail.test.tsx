@@ -57,6 +57,16 @@ describe('product detail page', () => {
     expect(screen.getByRole('link', { name: /ver coleção/i })).toBeInTheDocument()
   })
 
+  it('renders an explicit error state when the backend request fails', async () => {
+    vi.mocked(catalogRepository.getProductBySlug).mockRejectedValue(new Error('offline'))
+
+    renderWithRouter('/produto/touca-classica')
+
+    expect(await screen.findByRole('heading', { name: /erro ao carregar produto/i })).toBeInTheDocument()
+    expect(screen.getByText(/não foi possível carregar o produto no momento/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: /ver coleção/i })).toBeInTheDocument()
+  })
+
   it('renders an unavailable state when the backend product is inactive', async () => {
     vi.mocked(catalogRepository.getProductBySlug).mockResolvedValue({
       id: 'prod-2',

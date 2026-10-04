@@ -1,6 +1,6 @@
 import { isAxiosError } from 'axios'
 import { apiClient } from '@/lib/api-client'
-import { stripNonDigits } from '@/lib/masks'
+import { normalizePhoneDigits, stripNonDigits } from '@/lib/masks'
 
 /**
  * Contract mirrors `GuestCheckoutRequest` on the backend (ADR-001/ADR-002):
@@ -102,7 +102,7 @@ export function buildGuestCheckoutPayload(
     email: variables.email,
     fullName: variables.fullName,
     cpfCnpj: stripNonDigits(variables.cpfCnpj),
-    phone: stripNonDigits(variables.phone),
+    phone: normalizePhoneDigits(variables.phone),
     address: {
       cep: stripNonDigits(variables.address.cep),
       street: variables.address.street,
