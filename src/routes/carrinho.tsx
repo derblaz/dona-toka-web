@@ -27,7 +27,7 @@ function CartPage() {
         </p>
         <Link
           to="/colecao"
-          className="mt-8 inline-block rounded-[var(--radius)] bg-primary px-8 py-3 font-semibold text-primary-foreground hover:bg-primary-hover transition-colors"
+          className="btn-primary mt-8 px-8 py-3"
         >
           Ver coleção
         </Link>
@@ -132,7 +132,11 @@ function CartPage() {
               </span>
               <span className="font-medium text-text-primary">{formatCurrency(subtotalCents)}</span>
             </div>
-            <FreightEstimator subtotalCents={subtotalCents} onQuote={setFreightQuote} />
+            <FreightEstimator
+              subtotalCents={subtotalCents}
+              items={items.map(({ productId, quantity }) => ({ productId, quantity }))}
+              onQuote={setFreightQuote}
+            />
             <div className="flex justify-between text-sm">
               <span className="text-text-secondary">Frete (estimativa)</span>
               <span className="font-medium text-text-primary">
@@ -153,9 +157,9 @@ function CartPage() {
             </p>
             <a
               href="/checkout"
-              className="w-full rounded-[var(--radius)] bg-primary py-3 text-center font-semibold text-primary-foreground transition-colors hover:bg-primary-hover"
+              className="btn-primary w-full py-3 text-center"
             >
-              Ir para o checkout
+              Finalizar Pedido
             </a>
           </div>
         </aside>

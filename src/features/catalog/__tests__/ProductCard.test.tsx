@@ -1,8 +1,16 @@
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { routeTree } from '@/routeTree.gen'
+import { catalogRepository } from '@/features/catalog/repository'
+
+vi.mock('@/features/catalog/repository', () => ({
+  catalogRepository: {
+    getCollectionProducts: vi.fn(),
+    getProductBySlug: vi.fn(),
+    getProducts: vi.fn(),
+  },
+}))
 
 function renderWithRouter(path: string) {
   const router = createRouter({
@@ -13,60 +21,50 @@ function renderWithRouter(path: string) {
 }
 
 describe('ProductCard integration', () => {
-  it('renders both toca and gorro product names on /colecao', async () => {
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('renders product cards from the backend catalog feed', async () => {
+    vi.mocked(catalogRepository.getCollectionProducts).mockResolvedValue([
+      {
+        id: 'prod-1',
+        slug: 'touca-classica',
+        name: 'Touca Clássica',
+        category: 'toca-cirurgica',
+        description: 'Touca confortável para uso diário.',
+        priceCents: 5900,
+        active: true,
+        mainImageUrl: 'https://cdn.example.com/touca.jpg',
+        galleryImageUrls: ['https://cdn.example.com/touca.jpg'],
+      },
+      {
+        id: 'prod-2',
+        slug: 'gorro',
+        name: 'Gorro',
+        category: 'gorro',
+        description: 'Gorro artesanal.',
+        priceCents: 4200,
+        active: true,
+        mainImageUrl: 'https://cdn.example.com/gorro.jpg',
+        galleryImageUrls: ['https://cdn.example.com/gorro.jpg'],
+      },
+    ])
+
     renderWithRouter('/colecao')
-    expect(await screen.findByRole('heading', { name: /touca cirúrgica/i })).toBeInTheDocument()
+
+    expect(await screen.findByRole('heading', { name: /coleção/i })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /touca clássica/i })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: /gorro/i })).toBeInTheDocument()
   })
 
-  it('exposes layout and real-product image toggle buttons', async () => {
+  it('renders product detail links for each catalog item', async () => {
+    vi.mocked(catalogRepository.getCollectionProducts).mockResolvedValue([
+      { id: 'prod-1', slug: 'touca-classica', name: 'Touca Clássica', category: 'toca-cirurgica', description: 'Touca', priceCents: 5900, active: true, mainImageUrl: 'https://cdn.example.com/touca.jpg', galleryImageUrls: ['https://cdn.example.com/touca.jpg'] },
+    ])
+
     renderWithRouter('/colecao')
-    await screen.findByRole('heading', { name: /coleção/i })
-    const layoutButtons = screen.getAllByRole('button', { name: /layout/i })
-    const produtoButtons = screen.getAllByRole('button', { name: /produto/i })
-    expect(layoutButtons.length).toBeGreaterThan(0)
-    expect(produtoButtons.length).toBeGreaterThan(0)
-  })
 
-  it('switches to layout image when layout button is clicked', async () => {
-    const user = userEvent.setup()
-    renderWithRouter('/colecao')
-    await screen.findByRole('heading', { name: /touca cirúrgica/i })
-
-    const layoutButtons = screen.getAllByRole('button', { name: /^layout$/i })
-    await user.click(layoutButtons[0])
-    expect(layoutButtons[0]).toHaveAttribute('aria-pressed', 'true')
-  })
-
-  it('renders variant selection buttons for each product', async () => {
-    renderWithRouter('/colecao')
-    await screen.findByRole('heading', { name: /touca cirúrgica/i })
-    expect(screen.getAllByRole('radio', { name: /lisa/i }).length).toBeGreaterThan(0)
-  })
-
-  it('shows price when a variant is selected', async () => {
-    renderWithRouter('/colecao')
-    await screen.findByRole('heading', { name: /touca cirúrgica/i })
-    expect(screen.getAllByText(/R\$/).length).toBeGreaterThan(0)
-  })
-
-  it('has a link to product detail for each product', async () => {
-    renderWithRouter('/colecao')
-    await screen.findByRole('heading', { name: /touca cirúrgica/i })
-    const detailLinks = screen.getAllByRole('link', { name: /ver detalhes/i })
-    expect(detailLinks.length).toBeGreaterThanOrEqual(2)
-  })
-
-  it('switches to produto view when produto button is clicked after layout', async () => {
-    const user = userEvent.setup()
-    renderWithRouter('/colecao')
-    await screen.findByRole('heading', { name: /touca cirúrgica/i })
-
-    const layoutButtons = screen.getAllByRole('button', { name: /^layout$/i })
-    await user.click(layoutButtons[0])
-
-    const produtoButtons = screen.getAllByRole('button', { name: /^produto$/i })
-    await user.click(produtoButtons[0])
-    expect(produtoButtons[0]).toHaveAttribute('aria-pressed', 'true')
+    expect(await screen.findByRole('link', { name: /ver detalhes de touca clássica/i })).toHaveAttribute('href', '/produto/touca-classica')
   })
 })

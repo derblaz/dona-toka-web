@@ -1,111 +1,106 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { apiClient } from '@/lib/api-client'
 import { catalogRepository } from '../repository'
-import { CATALOG_SEED } from '../seed'
+
+vi.mock('@/lib/api-client', () => ({
+  apiClient: {
+    get: vi.fn(),
+  },
+}))
 
 describe('catalogRepository', () => {
-  describe('getProducts', () => {
-    it('returns all seeded products', () => {
-      const products = catalogRepository.getProducts()
-      expect(products).toHaveLength(CATALOG_SEED.length)
-      expect(products).toEqual(CATALOG_SEED)
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('maps backend catalog payloads to storefront products with main and gallery image data', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        success: true,
+        message: 'Active products retrieved.',
+        data: [
+          {
+            id: 'prod-1',
+            slug: 'touca-classica',
+            name: 'Touca Clássica',
+            category: 'toca-cirurgica',
+            summary: 'Touca confortável para uso diário.',
+            priceCents: 5900,
+            active: true,
+            mainImageUrl: 'https://cdn.example.com/touca.jpg',
+            galleryImageUrls: ['https://cdn.example.com/touca.jpg', 'https://cdn.example.com/touca-2.jpg'],
+          },
+        ],
+      },
     })
 
-    it('returns both toca-cirurgica and gorro products', () => {
-      const products = catalogRepository.getProducts()
-      const categories = products.map((p) => p.category)
-      expect(categories).toContain('toca-cirurgica')
-      expect(categories).toContain('gorro')
-    })
+    const products = await catalogRepository.getProducts()
 
-    it('returns products with declared variants', () => {
-      const products = catalogRepository.getProducts()
-      for (const product of products) {
-        expect(product.variants.length).toBeGreaterThan(0)
-      }
+    expect(products).toHaveLength(1)
+    expect(products[0]).toMatchObject({
+      id: 'prod-1',
+      slug: 'touca-classica',
+      name: 'Touca Clássica',
+      description: 'Touca confortável para uso diário.',
+      mainImageUrl: 'https://cdn.example.com/touca.jpg',
+      galleryImageUrls: ['https://cdn.example.com/touca.jpg', 'https://cdn.example.com/touca-2.jpg'],
     })
   })
 
-  describe('getProductBySlug', () => {
-    it('returns the toca-cirurgica product for slug "toca-cirurgica"', () => {
-      const product = catalogRepository.getProductBySlug('toca-cirurgica')
-      expect(product).toBeDefined()
-      expect(product?.id).toBe('toca-cirurgica')
-      expect(product?.category).toBe('toca-cirurgica')
+  it('resolves the correct product by slug from the backend feed', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        success: true,
+        message: 'Active products retrieved.',
+        data: [
+          { id: 'prod-1', slug: 'touca-classica', name: 'Touca Clássica', category: 'toca-cirurgica', summary: 'Touca', priceCents: 5900, active: true, mainImageUrl: 'https://cdn.example.com/touca.jpg', galleryImageUrls: ['https://cdn.example.com/touca.jpg'] },
+          { id: 'prod-2', slug: 'gorro', name: 'Gorro', category: 'gorro', summary: 'Gorro', priceCents: 4200, active: true, mainImageUrl: 'https://cdn.example.com/gorro.jpg', galleryImageUrls: ['https://cdn.example.com/gorro.jpg'] },
+        ],
+      },
     })
 
-    it('returns the gorro product for slug "gorro"', () => {
-      const product = catalogRepository.getProductBySlug('gorro')
-      expect(product).toBeDefined()
-      expect(product?.id).toBe('gorro')
-      expect(product?.category).toBe('gorro')
-    })
+    const product = await catalogRepository.getProductBySlug('gorro')
 
-    it('returns undefined for an unknown slug', () => {
-      const product = catalogRepository.getProductBySlug('produto-inexistente')
-      expect(product).toBeUndefined()
-    })
-
-    it('returns undefined for empty slug', () => {
-      expect(catalogRepository.getProductBySlug('')).toBeUndefined()
-    })
+    expect(product).toBeDefined()
+    expect(product?.id).toBe('prod-2')
+    expect(product?.slug).toBe('gorro')
   })
 
-  describe('getCollectionProducts', () => {
-    it('returns both products', () => {
-      const products = catalogRepository.getCollectionProducts()
-      expect(products).toHaveLength(2)
+  it('filters inactive products before rendering the storefront catalog', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        success: true,
+        message: 'Active products retrieved.',
+        data: [
+          { id: 'prod-1', slug: 'touca-classica', name: 'Touca Clássica', category: 'toca-cirurgica', summary: 'Touca', priceCents: 5900, active: true, mainImageUrl: 'https://cdn.example.com/touca.jpg', galleryImageUrls: ['https://cdn.example.com/touca.jpg', 'https://cdn.example.com/touca-2.jpg'] },
+          { id: 'prod-2', slug: 'gorro', name: 'Gorro', category: 'gorro', summary: 'Gorro', priceCents: 4200, active: false, mainImageUrl: 'https://cdn.example.com/gorro.jpg', galleryImageUrls: ['https://cdn.example.com/gorro.jpg'] },
+        ],
+      },
     })
+
+    const products = await catalogRepository.getProducts()
+    expect(products).toHaveLength(1)
+    expect(products[0].slug).toBe('touca-classica')
   })
 
-  describe('seed data integrity', () => {
-    it('every seeded variant has distinct layout and real-product images', () => {
-      for (const product of CATALOG_SEED) {
-        for (const variant of product.variants) {
-          const layoutImages = variant.images.filter((i) => i.role === 'layout')
-          const realImages = variant.images.filter((i) => i.role === 'real-product')
-          expect(layoutImages.length).toBeGreaterThan(0)
-          expect(realImages.length).toBeGreaterThan(0)
-        }
-      }
+  it('surfaces backend failures instead of using a local fallback catalog', async () => {
+    vi.mocked(apiClient.get).mockRejectedValue(new Error('offline'))
+
+    await expect(catalogRepository.getProducts()).rejects.toThrow('offline')
+    await expect(catalogRepository.getProductBySlug('toca-cirurgica')).rejects.toThrow('offline')
+  })
+
+  it('returns an empty list for failed or empty backend catalog responses', async () => {
+    vi.mocked(apiClient.get).mockResolvedValue({
+      data: {
+        success: true,
+        message: 'Active products retrieved.',
+        data: [],
+      },
     })
 
-    it('every seeded variant has non-empty alt text on all images', () => {
-      for (const product of CATALOG_SEED) {
-        for (const variant of product.variants) {
-          for (const image of variant.images) {
-            expect(image.alt.trim()).not.toBe('')
-          }
-        }
-      }
-    })
-
-    it('toca-cirurgica has plain, printed, lateral-name, brand-logo, and embroidered-name variants', () => {
-      const toca = CATALOG_SEED.find((p) => p.slug === 'toca-cirurgica')!
-      const variantIds = toca.variants.map((v) => v.id)
-      expect(variantIds).toContain('toca-lisa')
-      expect(variantIds).toContain('toca-estampada')
-      expect(variantIds).toContain('toca-nome-lateral')
-      expect(variantIds).toContain('toca-logo-marca')
-      expect(variantIds).toContain('toca-nome-bordado')
-    })
-
-    it('gorro has all five variant types', () => {
-      const gorro = CATALOG_SEED.find((p) => p.slug === 'gorro')!
-      const variantIds = gorro.variants.map((v) => v.id)
-      expect(variantIds).toContain('gorro-liso')
-      expect(variantIds).toContain('gorro-estampado')
-      expect(variantIds).toContain('gorro-nome-lateral')
-      expect(variantIds).toContain('gorro-logo-marca')
-      expect(variantIds).toContain('gorro-nome-bordado')
-    })
-
-    it('every variant has a positive price in centavos', () => {
-      for (const product of CATALOG_SEED) {
-        for (const variant of product.variants) {
-          expect(variant.priceCents).toBeGreaterThan(0)
-          expect(Number.isInteger(variant.priceCents)).toBe(true)
-        }
-      }
-    })
+    const products = await catalogRepository.getProducts()
+    expect(products).toEqual([])
+    expect(await catalogRepository.getCollectionProducts()).toEqual([])
   })
 })

@@ -6,22 +6,35 @@ export interface ProductImage {
   height: number
 }
 
-export interface ProductVariant {
+export interface CatalogApiEnvelope<T> {
+  success: boolean
+  message: string
+  data: T
+}
+
+export interface CatalogProductPayload {
   id: string
-  name: string
   slug: string
+  name: string
+  category: string
+  summary?: string
+  description?: string
   priceCents: number
-  images: ProductImage[]
-  maxQuantity: number
+  active: boolean
+  mainImageUrl?: string | null
+  galleryImageUrls?: Array<string | null> | null
 }
 
 export interface Product {
   id: string
   slug: string
   name: string
-  category: 'toca-cirurgica' | 'gorro'
+  category: string
   description: string
-  variants: ProductVariant[]
+  priceCents: number
+  active: boolean
+  mainImageUrl: string
+  galleryImageUrls: string[]
 }
 
 /** Snapshot emitted when a visitor adds an item to the cart. */
