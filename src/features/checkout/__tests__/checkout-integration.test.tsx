@@ -1,12 +1,17 @@
 import { render, screen, waitFor } from '@testing-library/react'
-import { AxiosError } from 'axios'
+import { AxiosError, type AxiosResponse, type InternalAxiosRequestConfig } from 'axios'
 import userEvent from '@testing-library/user-event'
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { routeTree } from '@/routeTree.gen'
 import { _resetForTest, getItems } from '@/features/cart/store'
 import * as checkoutNavigation from '@/features/checkout/navigation'
-import { apiClient } from '@/lib/api-client'
+import {
+  enableAutoRefresh,
+  apiClient,
+  invalidateSession,
+  setAccessToken,
+} from '@/lib/api-client'
 import { getSessionOrder } from '@/features/checkout/service'
 import { stripNonDigits } from '@/lib/masks'
 import type { CartItem } from '@/features/cart/models'
@@ -179,6 +184,124 @@ describe('checkout — input masking', () => {
     expect(documentInput).toHaveValue('123.456.789-09')
     expect(stripNonDigits((phoneInput as HTMLInputElement).value)).toBe('11912345678')
     expect(stripNonDigits((documentInput as HTMLInputElement).value)).toBe('12345678909')
+  })
+})
+
+describe('checkout — transporte visitante', () => {
+  type RecordedRequest = { url?: string; auth: unknown; credentials?: boolean; xAuth: unknown }
+
+  function routeGuestCheckout(status: number, body: unknown) {
+    const requests: RecordedRequest[] = []
+    const previous = apiClient.defaults.adapter
+    apiClient.defaults.adapter = (async (config: InternalAxiosRequestConfig) => {
+      requests.push({
+        url: config.url,
+        auth: config.headers.get('Authorization') ?? null,
+        credentials: config.withCredentials,
+        xAuth: config.headers.get('X-Auth-Request') ?? undefined,
+      })
+      const response = { data: body, status, statusText: '', headers: {}, config, request: {} } as AxiosResponse
+      if (status >= 400) {
+        throw new AxiosError(`Request failed with status code ${status}`, AxiosError.ERR_BAD_RESPONSE, config, {}, response)
+      }
+      return response
+    }) as never
+    return { requests, restore: () => (apiClient.defaults.adapter = previous) }
+  }
+
+  async function fillGuestCheckout() {
+    shippingQuoteMode = 'multi'
+    renderRoute('/checkout')
+    await screen.findByRole('heading', { name: /finalizar/i })
+
+    await userEvent.type(screen.getByLabelText(/nome completo/i), 'Ana Lima')
+    await userEvent.type(screen.getByLabelText(/cpf ou cnpj/i), '12345678909')
+    await userEvent.type(screen.getByLabelText(/e-mail/i), 'ana@example.com')
+    await userEvent.type(screen.getByLabelText(/telefone/i), '11912345678')
+    await userEvent.type(screen.getByLabelText(/cep/i), '01310100')
+    await userEvent.click(screen.getByRole('button', { name: /calcular frete/i }))
+    await screen.findByText(/estimativa de frete/i)
+
+    await userEvent.type(screen.getByLabelText(/rua \/ avenida/i), 'Av. Paulista')
+    await userEvent.type(screen.getByLabelText(/número/i), '1000')
+    await userEvent.type(screen.getByLabelText(/bairro/i), 'Bela Vista')
+    await userEvent.type(screen.getByLabelText(/cidade/i), 'São Paulo')
+    await userEvent.type(screen.getByLabelText(/estado/i), 'SP')
+    await userEvent.click(screen.getByRole('button', { name: /fazer pagamento/i }))
+  }
+
+  afterEach(() => {
+    invalidateSession()
+  })
+
+  it('envia o checkout sem Bearer, sem refresh e preserva carrinho, redirect e storage', async () => {
+    _resetForTest([cartItem])
+    const assignSpy = vi
+      .spyOn(checkoutNavigation, 'redirectToHostedCheckout')
+      .mockImplementation(() => undefined)
+    setAccessToken('visitor-token-sentinel')
+    const guest = routeGuestCheckout(200, {
+      success: true,
+      message: 'Guest checkout created.',
+      data: {
+        orderId: '9b1d2f3a-0000-4000-8000-000000000010',
+        orderStatus: 'CREATED',
+        paymentId: '9b1d2f3a-0000-4000-8000-000000000020',
+        paymentStatus: 'PENDING',
+        checkoutUrl: 'https://checkout.infinitepay.io/pay/abc',
+        redirect: {
+          returnUrl: 'http://localhost:5173/pedido/9b1d2f3a-0000-4000-8000-000000000010',
+          checkoutUrl: 'https://checkout.infinitepay.io/pay/abc',
+          orderId: '9b1d2f3a-0000-4000-8000-000000000010',
+        },
+      },
+    })
+
+    try {
+      await fillGuestCheckout()
+
+      await waitFor(() => {
+        expect(assignSpy).toHaveBeenCalledWith('https://checkout.infinitepay.io/pay/abc')
+      })
+      expect(guest.requests).toEqual([
+        {
+          url: '/api/v1/checkout/guest',
+          auth: null,
+          credentials: false,
+          xAuth: undefined,
+        },
+      ])
+      expect(getItems()).toHaveLength(0)
+      expect(JSON.stringify({ ...localStorage, ...sessionStorage })).not.toContain('visitor-token-sentinel')
+    } finally {
+      guest.restore()
+    }
+  })
+
+  it('checkout visitante 401 nao dispara refresh nem repeticao mesmo com sessao autorizada', async () => {
+    _resetForTest([cartItem])
+    const assignSpy = vi
+      .spyOn(checkoutNavigation, 'redirectToHostedCheckout')
+      .mockImplementation(() => undefined)
+    enableAutoRefresh()
+    setAccessToken('stale-token')
+    const guest = routeGuestCheckout(401, { success: false, message: 'Unauthorized', data: null })
+
+    try {
+      await fillGuestCheckout()
+
+      await waitFor(() => {
+        expect(guest.requests).toHaveLength(1)
+      })
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /fazer pagamento/i })).toBeEnabled()
+      })
+      expect(guest.requests.filter((request) => request.url?.includes('/auth/'))).toHaveLength(0)
+      expect(assignSpy).not.toHaveBeenCalled()
+      expect(getItems()).toHaveLength(1)
+    } finally {
+      guest.restore()
+    }
   })
 })
 
