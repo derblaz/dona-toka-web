@@ -58,6 +58,27 @@ describe('ProductCard integration', () => {
     expect(screen.getByRole('heading', { name: /gorro/i })).toBeInTheDocument()
   })
 
+  it('shows the unavailable-image state when the backend gallery is empty', async () => {
+    vi.mocked(catalogRepository.getCollectionProducts).mockResolvedValue([
+      {
+        id: 'prod-3',
+        slug: 'sem-foto',
+        name: 'Sem Foto',
+        category: 'gorro',
+        description: 'Produto sem imagens.',
+        priceCents: 3000,
+        active: true,
+        mainImageUrl: '',
+        galleryImageUrls: [],
+      },
+    ])
+
+    renderWithRouter('/colecao')
+
+    expect(await screen.findByRole('heading', { name: /sem foto/i })).toBeInTheDocument()
+    expect(screen.getByText('Imagem indisponível')).toBeInTheDocument()
+  })
+
   it('renders product detail links for each catalog item', async () => {
     vi.mocked(catalogRepository.getCollectionProducts).mockResolvedValue([
       { id: 'prod-1', slug: 'touca-classica', name: 'Touca Clássica', category: 'toca-cirurgica', description: 'Touca', priceCents: 5900, active: true, mainImageUrl: 'https://cdn.example.com/touca.jpg', galleryImageUrls: ['https://cdn.example.com/touca.jpg'] },

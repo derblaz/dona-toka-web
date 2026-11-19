@@ -1,8 +1,7 @@
-import { useEffect, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { catalogRepository } from '@/features/catalog/repository'
+import { useQuery } from '@tanstack/react-query'
+import { productQueryOptions } from '@/features/catalog/queries'
 import { ProductDetail } from '@/features/catalog/ProductDetail'
-import type { Product } from '@/features/catalog/models'
 
 export const Route = createFileRoute('/produto/$slug')({
   component: ProductPage,
@@ -10,36 +9,12 @@ export const Route = createFileRoute('/produto/$slug')({
 
 function ProductPage() {
   const { slug } = Route.useParams()
-  const [product, setProduct] = useState<Product | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const { data: product, isPending, isError } = useQuery(productQueryOptions(slug))
+  const loadError = isError && product === undefined
+    ? 'Não foi possível carregar o produto no momento.'
+    : null
 
-  useEffect(() => {
-    let active = true
-
-    async function loadProduct() {
-      try {
-        const catalogProduct = await catalogRepository.getProductBySlug(slug)
-        if (!active) return
-        setProduct(catalogProduct ?? null)
-        setLoadError(null)
-      } catch {
-        if (!active) return
-        setProduct(null)
-        setLoadError('Não foi possível carregar o produto no momento.')
-      } finally {
-        if (active) setIsLoading(false)
-      }
-    }
-
-    void loadProduct()
-
-    return () => {
-      active = false
-    }
-  }, [slug])
-
-  if (isLoading) {
+  if (isPending) {
     return (
       <main className="mx-auto max-w-5xl px-6 py-20 text-center">
         <p className="text-text-secondary">Carregando produto...</p>

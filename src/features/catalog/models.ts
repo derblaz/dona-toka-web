@@ -21,8 +21,13 @@ export interface CatalogProductPayload {
   description?: string
   priceCents: number
   active: boolean
-  mainImageUrl?: string | null
-  galleryImageUrls?: Array<string | null> | null
+  galleryImages?: CatalogGalleryImagePayload[] | null
+}
+
+export interface CatalogGalleryImagePayload {
+  id: string
+  location: string
+  checksum: string
 }
 
 export interface Product {

@@ -1,11 +1,12 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { routeTree } from '@/routeTree.gen'
 import { ADD_TO_CART_EVENT } from '../models'
 import type { CartItemSnapshot } from '../models'
 import { catalogRepository } from '@/features/catalog/repository'
+import { queryClient } from '@/lib/query-client'
 
 vi.mock('@/features/catalog/repository', () => ({
   catalogRepository: {
@@ -24,6 +25,10 @@ function renderWithRouter(path: string) {
 }
 
 describe('product detail page', () => {
+  beforeEach(() => {
+    queryClient.clear()
+  })
+
   afterEach(() => {
     vi.clearAllMocks()
   })

@@ -471,6 +471,47 @@ describe('checkout — hosted-payment state', () => {
     expect(getItems()[0]).toMatchObject({ productId: cartItem.productId, quantity: 1 })
     expect(sessionStorage.getItem('dona-toka:checkout-confirmation-snapshots')).toBeNull()
   })
+
+  it('shows an accessible error and preserves the cart when the product was deactivated after catalog load', async () => {
+    shippingQuoteMode = 'multi'
+    _resetForTest([cartItem])
+    const assignSpy = vi
+      .spyOn(checkoutNavigation, 'redirectToHostedCheckout')
+      .mockImplementation(() => undefined)
+    vi.spyOn(apiClient, 'post').mockRejectedValue(
+      axiosHttpError(422, {
+        success: false,
+        message: 'Active product was not found.',
+        data: null,
+      }),
+    )
+
+    renderRoute('/checkout')
+    await screen.findByRole('heading', { name: /finalizar/i })
+
+    await userEvent.type(screen.getByLabelText(/nome completo/i), 'Ana Lima')
+    await userEvent.type(screen.getByLabelText(/cpf ou cnpj/i), '12345678909')
+    await userEvent.type(screen.getByLabelText(/e-mail/i), 'ana@example.com')
+    await userEvent.type(screen.getByLabelText(/telefone/i), '11912345678')
+    await userEvent.type(screen.getByLabelText(/cep/i), '01310100')
+    await userEvent.click(screen.getByRole('button', { name: /calcular frete/i }))
+    await screen.findByText(/estimativa de frete/i)
+
+    await userEvent.type(screen.getByLabelText(/rua \/ avenida/i), 'Av. Paulista')
+    await userEvent.type(screen.getByLabelText(/número/i), '1000')
+    await userEvent.type(screen.getByLabelText(/bairro/i), 'Bela Vista')
+    await userEvent.type(screen.getByLabelText(/cidade/i), 'São Paulo')
+    await userEvent.type(screen.getByLabelText(/estado/i), 'SP')
+
+    await userEvent.click(screen.getByRole('button', { name: /fazer pagamento/i }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/active product was not found/i)
+    })
+    expect(assignSpy).not.toHaveBeenCalled()
+    expect(getItems()).toHaveLength(1)
+    expect(sessionStorage.getItem('dona-toka:checkout-confirmation-snapshots')).toBeNull()
+  })
 })
 
 describe('checkout — freight quote edge cases', () => {

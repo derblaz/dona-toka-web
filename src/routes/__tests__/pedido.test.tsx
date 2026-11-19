@@ -1,10 +1,11 @@
 import { render, screen } from '@testing-library/react'
 import { createMemoryHistory, createRouter, RouterProvider } from '@tanstack/react-router'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { routeTree } from '@/routeTree.gen'
 import { saveCheckoutConfirmationSnapshot } from '@/features/checkout/service'
 import type { CheckoutConfirmationSnapshot } from '@/features/checkout/models'
 import { _resetForTest } from '@/features/cart/store'
+import { apiClient } from '@/lib/api-client'
 
 const ORDER_ID = '9b1d2f3a-0000-4000-8000-000000000010'
 
@@ -117,6 +118,16 @@ describe('confirmation route — provider return handling', () => {
     ).toBeInTheDocument()
     expect(screen.getByText(/touca cirúrgica/i)).toBeInTheDocument()
     expect(screen.getByText(ORDER_ID)).toBeInTheDocument()
+  })
+
+  it('renders the saved name and price from the snapshot without reading the live catalog', async () => {
+    const catalogSpy = vi.spyOn(apiClient, 'get')
+    renderOrderPage(`/pedido/${ORDER_ID}`)
+
+    expect(await screen.findByText(/touca cirúrgica/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/r\$\s?98,00/i).length).toBeGreaterThan(0)
+    expect(catalogSpy).not.toHaveBeenCalled()
+    catalogSpy.mockRestore()
   })
 
   it('renders the not-found state for an unknown order id', async () => {
