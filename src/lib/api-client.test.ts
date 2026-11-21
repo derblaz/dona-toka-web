@@ -350,8 +350,8 @@ describe('consultas publicas da loja no cliente singleton', () => {
     const calls: string[] = []
     const previous = apiClient.defaults.adapter
     apiClient.defaults.adapter = routeAdapter({
-      'GET /api/v1/catalog/products': () => {
-        calls.push('GET /api/v1/catalog/products')
+      'GET /api/v1/store/catalog/products': () => {
+        calls.push('GET /api/v1/store/catalog/products')
         return { status: 401 }
       },
       'POST /api/v1/auth/refresh': () => {
@@ -361,8 +361,8 @@ describe('consultas publicas da loja no cliente singleton', () => {
     }) as never
 
     try {
-      await expect(apiClient.get('/api/v1/catalog/products')).rejects.toMatchObject({ response: { status: 401 } })
-      expect(calls).toEqual(['GET /api/v1/catalog/products'])
+      await expect(apiClient.get('/api/v1/store/catalog/products')).rejects.toMatchObject({ response: { status: 401 } })
+      expect(calls).toEqual(['GET /api/v1/store/catalog/products'])
     } finally {
       apiClient.defaults.adapter = previous
       invalidateSession()

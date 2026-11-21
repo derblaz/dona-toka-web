@@ -127,7 +127,7 @@ describe('submitGuestCheckout', () => {
 
     const result = await submitGuestCheckout(variables)
 
-    expect(post).toHaveBeenCalledWith('/api/v1/checkout/guest', buildGuestCheckoutPayload(variables))
+    expect(post).toHaveBeenCalledWith('/api/v1/store/checkout/guest', buildGuestCheckoutPayload(variables))
     expect(result).toEqual(confirmation)
   })
 

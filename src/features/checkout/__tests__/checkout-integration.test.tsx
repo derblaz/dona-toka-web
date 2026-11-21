@@ -265,7 +265,7 @@ describe('checkout — transporte visitante', () => {
       })
       expect(guest.requests).toEqual([
         {
-          url: '/api/v1/checkout/guest',
+          url: '/api/v1/store/checkout/guest',
           auth: null,
           credentials: false,
           xAuth: undefined,
