@@ -1,13 +1,12 @@
 import { useEffect, useReducer } from 'react'
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider } from '@tanstack/react-query'
 import { Outlet } from '@tanstack/react-router'
 import { Toaster } from 'sonner'
 import { Header } from './Header'
 import { Footer } from './Footer'
 import * as cartStore from '@/features/cart/store'
 import { ADD_TO_CART_EVENT } from '@/features/catalog/models'
-
-const queryClient = new QueryClient()
+import { queryClient } from '@/lib/query-client'
 
 export function AppShell() {
   const [, rerender] = useReducer((x: number) => x + 1, 0)

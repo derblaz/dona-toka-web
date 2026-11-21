@@ -1,42 +1,16 @@
-import { useEffect, useState } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
-import { catalogRepository } from '@/features/catalog/repository'
+import { useQuery } from '@tanstack/react-query'
+import { collectionQueryOptions } from '@/features/catalog/queries'
 import { ProductCard } from '@/features/catalog/ProductCard'
-import type { Product } from '@/features/catalog/models'
 
 export const Route = createFileRoute('/colecao')({
   component: CollectionPage,
 })
 
 function CollectionPage() {
-  const [products, setProducts] = useState<Product[]>([])
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    let active = true
-
-    async function loadProducts() {
-      try {
-        const catalogProducts = await catalogRepository.getCollectionProducts()
-        if (!active) return
-        setProducts(catalogProducts)
-        setError(null)
-      } catch {
-        if (!active) return
-        setProducts([])
-        setError('Não foi possível carregar a coleção no momento.')
-      } finally {
-        if (active) setIsLoading(false)
-      }
-    }
-
-    void loadProducts()
-
-    return () => {
-      active = false
-    }
-  }, [])
+  const { data, isPending, isError } = useQuery(collectionQueryOptions)
+  const products = data ?? []
+  const error = isError && data === undefined
 
   return (
     <main>
@@ -47,13 +21,13 @@ function CollectionPage() {
         </p>
       </section>
 
-      {isLoading ? (
+      {isPending ? (
         <section className="mx-auto max-w-5xl px-6 pb-16 text-center">
           <p className="text-text-secondary">Carregando coleção...</p>
         </section>
       ) : error ? (
         <section className="mx-auto max-w-5xl px-6 pb-16 text-center">
-          <p className="text-text-secondary">{error}</p>
+          <p className="text-text-secondary">Não foi possível carregar a coleção no momento.</p>
         </section>
       ) : products.length === 0 ? (
         <section className="mx-auto max-w-5xl px-6 pb-16 text-center">

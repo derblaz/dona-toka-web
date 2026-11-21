@@ -8,17 +8,8 @@ export interface CatalogRepository {
 }
 
 function normalizeProduct(payload: CatalogProductPayload): Product {
-  const galleryImageUrls = Array.from(
-    new Set(
-      (payload.galleryImageUrls ?? [])
-        .filter((url): url is string => typeof url === 'string' && url.trim().length > 0)
-        .map((url) => url.trim()),
-    ),
-  )
-
-  const mainImageUrl = typeof payload.mainImageUrl === 'string' && payload.mainImageUrl.trim().length > 0
-    ? payload.mainImageUrl.trim()
-    : galleryImageUrls[0] ?? ''
+  const galleryImageUrls = (payload.galleryImages ?? []).map((image) => image.location)
+  const mainImageUrl = galleryImageUrls[0] ?? ''
 
   return {
     id: payload.id,
@@ -29,12 +20,12 @@ function normalizeProduct(payload: CatalogProductPayload): Product {
     priceCents: Number(payload.priceCents) || 0,
     active: Boolean(payload.active),
     mainImageUrl,
-    galleryImageUrls: galleryImageUrls.length > 0 ? galleryImageUrls : mainImageUrl ? [mainImageUrl] : [],
+    galleryImageUrls,
   }
 }
 
 async function getProducts(): Promise<Product[]> {
-  const { data } = await apiClient.get<CatalogApiEnvelope<CatalogProductPayload[]>>('/api/v1/catalog/products')
+  const { data } = await apiClient.get<CatalogApiEnvelope<CatalogProductPayload[]>>('/api/v1/store/catalog/products')
   return (data.data ?? [])
     .map(normalizeProduct)
     .filter((product) => product.active)
