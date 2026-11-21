@@ -39,7 +39,7 @@ function validateRequest({ destinationZip, items }: ShippingQuoteVariables): Shi
 
 async function requestShippingQuote(variables: ShippingQuoteVariables): Promise<ShippingQuoteResult> {
   const request = validateRequest(variables)
-  const { data } = await apiClient.post<ShippingQuoteResult>('/api/v1/shipping/quote', request)
+  const { data } = await apiClient.post<ShippingQuoteResult>('/api/v1/store/shipping/quote', request)
   return data
 }
 

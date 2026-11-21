@@ -129,7 +129,7 @@ export async function submitGuestCheckout(
 
   try {
     const { data: envelope } = await apiClient.post<ApiResponseEnvelope<GuestCheckoutConfirmation>>(
-      '/api/v1/checkout/guest',
+      '/api/v1/store/checkout/guest',
       payload,
     )
     return envelope.data

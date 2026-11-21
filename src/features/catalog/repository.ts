@@ -25,7 +25,7 @@ function normalizeProduct(payload: CatalogProductPayload): Product {
 }
 
 async function getProducts(): Promise<Product[]> {
-  const { data } = await apiClient.get<CatalogApiEnvelope<CatalogProductPayload[]>>('/api/v1/catalog/products')
+  const { data } = await apiClient.get<CatalogApiEnvelope<CatalogProductPayload[]>>('/api/v1/store/catalog/products')
   return (data.data ?? [])
     .map(normalizeProduct)
     .filter((product) => product.active)

@@ -40,7 +40,7 @@ describe('useShippingQuote', () => {
     })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(post).toHaveBeenCalledWith('/api/v1/shipping/quote', {
+    expect(post).toHaveBeenCalledWith('/api/v1/store/shipping/quote', {
       destinationZip: '01310100',
       items: [{ productId: 'toca-cirurgica', quantity: 2 }],
     })
